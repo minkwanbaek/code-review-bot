@@ -133,6 +133,78 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .nav-link {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            color: var(--text-color);
+            background: #f1f5f9;
+        }
+
+        .nav-link:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Provider Filter Tabs */
+        .provider-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .provider-tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-weight: 600;
+            color: #64748b;
+            border-radius: 6px 6px 0 0;
+            transition: all 0.2s;
+        }
+
+        .provider-tab:hover {
+            background: #f1f5f9;
+        }
+
+        .provider-tab.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Search Input */
+        .search-container {
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
         .pr-table {
@@ -213,6 +285,11 @@
             color: white;
         }
 
+        .provider-bitbucket-server {
+            background-color: #0052cc;
+            color: white;
+        }
+
         .btn {
             display: inline-block;
             padding: 0.5rem 1rem;
@@ -261,6 +338,38 @@
             transform: rotate(180deg);
         }
 
+        /* Loading Spinner */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         footer {
             text-align: center;
             padding: 2rem;
@@ -268,23 +377,92 @@
             font-size: 0.9rem;
         }
 
+        /* Responsive Design */
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
 
             .pr-table {
-                font-size: 0.85rem;
+                display: none;
             }
 
-            .pr-table th,
-            .pr-table td {
-                padding: 0.5rem;
+            .pr-cards {
+                display: block;
+            }
+
+            .pr-card {
+                background: var(--card-bg);
+                border-radius: 12px;
+                padding: 1rem;
+                margin-bottom: 1rem;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                border: 1px solid var(--border-color);
+            }
+
+            .pr-card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 0.5rem;
+            }
+
+            .pr-card-title {
+                font-weight: 600;
+                font-size: 1rem;
+                color: var(--text-color);
+            }
+
+            .pr-card-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                font-size: 0.85rem;
+                color: #64748b;
+            }
+
+            .pr-card-meta-item {
+                display: flex;
+                align-items: center;
+                gap: 0.25rem;
+            }
+
+            .pr-card-actions {
+                margin-top: 0.75rem;
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            .section-title {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .provider-tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .nav-links {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        @media (min-width: 769px) {
+            .pr-cards {
+                display: none;
             }
         }
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
     <header>
         <div class="container">
             <h1>🤖 Code Review Bot</h1>
@@ -297,7 +475,7 @@
                     <span>⏱️ Poll Interval: <strong th:text="${pollIntervalSeconds / 60} + ' minutes'">5 minutes</strong></span>
                 </div>
                 <div class="status-item">
-                    <span>🕐 Updated: <strong th:text="${currentTime}">2024-01-01 00:00:00</strong></span>
+                    <span>🕐 Updated: <strong id="last-updated" th:text="${currentTime}">2024-01-01 00:00:00</strong></span>
                 </div>
             </div>
         </div>
@@ -326,8 +504,29 @@
 
         <!-- Recent Pull Requests -->
         <section class="section">
-            <h2 class="section-title">📋 Recent Pull Requests</h2>
-            <table class="pr-table">
+            <h2 class="section-title">
+                <span>📋 Recent Pull Requests</span>
+                <div class="nav-links">
+                    <a href="/settings" class="nav-link">⚙️ Settings</a>
+                    <a href="/history" class="nav-link">📜 History</a>
+                </div>
+            </h2>
+            
+            <!-- Provider Filter Tabs -->
+            <div class="provider-tabs">
+                <button class="provider-tab active" onclick="filterByProvider('all')">All</button>
+                <button class="provider-tab" onclick="filterByProvider('github')">GitHub</button>
+                <button class="provider-tab" onclick="filterByProvider('bitbucket')">Bitbucket</button>
+                <button class="provider-tab" onclick="filterByProvider('bitbucket-server')">Bitbucket Server</button>
+            </div>
+            
+            <!-- Search Input -->
+            <div class="search-container">
+                <input type="text" class="search-input" id="search-input" placeholder="Search by title, repo, or author..." oninput="searchPRs()">
+            </div>
+            
+            <!-- Desktop Table View -->
+            <table class="pr-table" id="pr-table">
                 <thead>
                     <tr>
                         <th>Provider</th>
@@ -340,12 +539,12 @@
                         <th>Action</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="pr-table-body">
                     <tr th:each="pr : ${recentPRs}">
                         <td>
                             <span class="provider-badge" 
-                                  th:classappend="${pr.provider == 'github'} ? 'provider-github' : 'provider-bitbucket'">
-                                <span th:text="${pr.provider == 'github'} ? 'GitHub' : 'Bitbucket'">GitHub</span>
+                                  th:classappend="${pr.provider == 'github'} ? 'provider-github' : (${pr.provider == 'bitbucket'} ? 'provider-bitbucket' : 'provider-bitbucket-server')">
+                                <span th:text="${pr.provider == 'github'} ? 'GitHub' : (${pr.provider == 'bitbucket'} ? 'Bitbucket' : 'Bitbucket Server')">GitHub</span>
                             </span>
                         </td>
                         <td><strong th:text="'#' + ${pr.number}">#42</strong></td>
@@ -359,20 +558,48 @@
                         </td>
                         <td th:text="${#temporals.format(#temporals.create(pr.updatedAt), 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
                         <td>
-                            <a th:href="${pr.url}" target="_blank" class="btn btn-primary btn-sm">View</a>
+                            <a th:href="@{'/pr/' + ${pr.id}}" class="btn btn-primary btn-sm">View</a>
                         </td>
                     </tr>
                 </tbody>
             </table>
+            
+            <!-- Mobile Card View -->
+            <div class="pr-cards" id="pr-cards">
+                <div class="pr-card" th:each="pr : ${recentPRs}">
+                    <div class="pr-card-header">
+                        <span class="pr-card-title" th:text="${pr.title}">Feature: Add user authentication</span>
+                        <span class="badge" 
+                              th:classappend="${pr.state == 'open'} ? 'badge-open' : 'badge-closed'"
+                              th:text="${pr.state}">open</span>
+                    </div>
+                    <div class="pr-card-meta">
+                        <span class="pr-card-meta-item">
+                            <span class="provider-badge" 
+                                  th:classappend="${pr.provider == 'github'} ? 'provider-github' : (${pr.provider == 'bitbucket'} ? 'provider-bitbucket' : 'provider-bitbucket-server')">
+                                <span th:text="${pr.provider == 'github'} ? 'GitHub' : (${pr.provider == 'bitbucket'} ? 'Bitbucket' : 'Bitbucket Server')">GitHub</span>
+                            </span>
+                        </span>
+                        <span class="pr-card-meta-item">📌 <strong th:text="'#' + ${pr.number}">#42</strong></span>
+                        <span class="pr-card-meta-item">👤 <span th:text="${pr.author}">developer1</span></span>
+                        <span class="pr-card-meta-item">📁 <span th:text="${pr.repo}">owner/project-a</span></span>
+                    </div>
+                    <div class="pr-card-actions">
+                        <a th:href="@{'/pr/' + ${pr.id}}" class="btn btn-primary btn-sm">View Details</a>
+                        <a th:href="${pr.url}" target="_blank" class="btn btn-sm" style="background:#f1f5f9;">Open in Provider</a>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Recent Reviews -->
         <section class="section">
             <h2 class="section-title">📊 Recent Review Results</h2>
             <div id="reviews-container">
-                <p style="text-align: center; color: #64748b; padding: 2rem;">
-                    Loading review results...
-                </p>
+                <div style="text-align: center; color: #64748b; padding: 2rem;">
+                    <div class="spinner" style="width:30px;height:30px;border-width:3px;border-top-color:#64748b;margin:0 auto 1rem;"></div>
+                    <p>Loading review results...</p>
+                </div>
             </div>
         </section>
     </main>
@@ -387,6 +614,133 @@
     </footer>
 
     <script>
+        let currentProvider = 'all';
+        let allPRs = [];
+        
+        // Initialize with server-side data
+        allPRs = [
+            [[${#strings.listJoin(recentPRs.![provider], ',')}]].length > 0 ? [
+                <th:block th:each="pr, iterStat : ${recentPRs}">
+                    {
+                        id: [[${pr.id}]],
+                        number: [[${pr.number}]],
+                        title: "[[${pr.title}]]",
+                        author: "[[${pr.author}]]",
+                        provider: "[[${pr.provider}]]",
+                        repo: "[[${pr.repo}]]",
+                        state: "[[${pr.state}]]",
+                        updatedAt: "[[${pr.updatedAt}]]",
+                        url: "[[${pr.url}]]"
+                    }<th:block th:text="${iterStat.last} ? '' : ','"/>
+                </th:block>
+            ] : []
+        ][0];
+
+        // Filter by provider
+        function filterByProvider(provider) {
+            currentProvider = provider;
+            
+            // Update tab styles
+            document.querySelectorAll('.provider-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderPRs();
+        }
+
+        // Search PRs
+        function searchPRs() {
+            renderPRs();
+        }
+
+        // Render PRs based on filters
+        function renderPRs() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            
+            let filtered = allPRs.filter(pr => {
+                // Provider filter
+                if (currentProvider !== 'all' && pr.provider !== currentProvider) {
+                    return false;
+                }
+                
+                // Search filter
+                if (searchTerm) {
+                    return pr.title.toLowerCase().includes(searchTerm) ||
+                           pr.repo.toLowerCase().includes(searchTerm) ||
+                           pr.author.toLowerCase().includes(searchTerm);
+                }
+                
+                return true;
+            });
+            
+            // Update table
+            const tableBody = document.getElementById('pr-table-body');
+            const cardsContainer = document.getElementById('pr-cards');
+            
+            if (filtered.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:2rem;">No pull requests found</td></tr>';
+                cardsContainer.innerHTML = '<div style="text-align:center;color:#64748b;padding:2rem;">No pull requests found</div>';
+                return;
+            }
+            
+            // Render table rows
+            let tableHtml = '';
+            filtered.forEach(pr => {
+                const providerClass = pr.provider === 'github' ? 'provider-github' : 
+                                     pr.provider === 'bitbucket' ? 'provider-bitbucket' : 'provider-bitbucket-server';
+                const providerName = pr.provider === 'github' ? 'GitHub' : 
+                                    pr.provider === 'bitbucket' ? 'Bitbucket' : 'Bitbucket Server';
+                const stateClass = pr.state === 'open' ? 'badge-open' : 'badge-closed';
+                const updatedDate = new Date(pr.updatedAt).toLocaleString('ko-KR', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                
+                tableHtml += `<tr>
+                    <td><span class="provider-badge ${providerClass}">${providerName}</span></td>
+                    <td><strong>#${pr.number}</strong></td>
+                    <td>${escapeHtml(pr.title)}</td>
+                    <td>${escapeHtml(pr.author)}</td>
+                    <td>${escapeHtml(pr.repo)}</td>
+                    <td><span class="badge ${stateClass}">${pr.state}</span></td>
+                    <td>${updatedDate}</td>
+                    <td><a href="/pr/${pr.id}" class="btn btn-primary btn-sm">View</a></td>
+                </tr>`;
+            });
+            tableBody.innerHTML = tableHtml;
+            
+            // Render cards for mobile
+            let cardsHtml = '';
+            filtered.forEach(pr => {
+                const providerClass = pr.provider === 'github' ? 'provider-github' : 
+                                     pr.provider === 'bitbucket' ? 'provider-bitbucket' : 'provider-bitbucket-server';
+                const providerName = pr.provider === 'github' ? 'GitHub' : 
+                                    pr.provider === 'bitbucket' ? 'Bitbucket' : 'Bitbucket Server';
+                const stateClass = pr.state === 'open' ? 'badge-open' : 'badge-closed';
+                
+                cardsHtml += `<div class="pr-card">
+                    <div class="pr-card-header">
+                        <span class="pr-card-title">${escapeHtml(pr.title)}</span>
+                        <span class="badge ${stateClass}">${pr.state}</span>
+                    </div>
+                    <div class="pr-card-meta">
+                        <span class="pr-card-meta-item">
+                            <span class="provider-badge ${providerClass}">${providerName}</span>
+                        </span>
+                        <span class="pr-card-meta-item">📌 <strong>#${pr.number}</strong></span>
+                        <span class="pr-card-meta-item">👤 ${escapeHtml(pr.author)}</span>
+                        <span class="pr-card-meta-item">📁 ${escapeHtml(pr.repo)}</span>
+                    </div>
+                    <div class="pr-card-actions">
+                        <a href="/pr/${pr.id}" class="btn btn-primary btn-sm">View Details</a>
+                        <a href="${escapeHtml(pr.url)}" target="_blank" class="btn btn-sm" style="background:#f1f5f9;">Open in Provider</a>
+                    </div>
+                </div>`;
+            });
+            cardsContainer.innerHTML = cardsHtml;
+        }
+
         // Fetch and display recent reviews
         async function loadReviews() {
             try {
@@ -406,7 +760,7 @@
                         
                         html += `<tr>
                             <td><strong>#${review.prNumber}</strong></td>
-                            <td>${review.repo}</td>
+                            <td>${escapeHtml(review.repo)}</td>
                             <td>
                                 <span class="badge badge-error">${review.errorCount} errors</span>
                                 <span class="badge badge-warning">${review.warningCount} warnings</span>
@@ -431,7 +785,43 @@
 
         // Refresh all data
         async function refreshData() {
-            location.reload();
+            showLoading(true);
+            try {
+                const response = await fetch('/api/prs?provider=all&status=all');
+                const data = await response.json();
+                
+                if (data.success && data.pullRequests) {
+                    allPRs = data.pullRequests;
+                    renderPRs();
+                    
+                    // Update timestamp
+                    document.getElementById('last-updated').textContent = 
+                        new Date().toLocaleString('ko-KR');
+                }
+                
+                loadReviews();
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Show/hide loading overlay
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            if (show) {
+                overlay.classList.add('active');
+            } else {
+                overlay.classList.remove('active');
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Auto-refresh every poll interval

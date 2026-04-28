@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review History - Code Review Bot</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #16a34a;
+            --warning-color: #ca8a04;
+            --error-color: #dc2626;
+            --info-color: #0891b2;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-color), #1d4ed8);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .btn-secondary {
+            background-color: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #1d4ed8;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        /* History Table */
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-table th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .history-table tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background-color: #dcfce7;
+            color: var(--success-color);
+        }
+
+        .badge-error {
+            background-color: #fee2e2;
+            color: var(--error-color);
+        }
+
+        .badge-warning {
+            background-color: #fef3c7;
+            color: var(--warning-color);
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .pagination button {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination span {
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .filter-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .history-table {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📜 Review History</h1>
+            <div class="nav-buttons">
+                <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Overall Statistics -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="total-reviews">-</div>
+                <div class="stat-label">Total Reviews</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avg-violations">-</div>
+                <div class="stat-label">Avg Violations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pass-rate">-</div>
+                <div class="stat-label">Pass Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-prs">-</div>
+                <div class="stat-label">Total PRs</div>
+            </div>
+        </section>
+
+        <!-- Filter Section -->
+        <section class="section">
+            <h2 class="section-title">🔍 Filters</h2>
+            <div class="filter-section">
+                <div class="form-group">
+                    <label for="start-date">Start Date</label>
+                    <input type="date" id="start-date">
+                </div>
+                <div class="form-group">
+                    <label for="end-date">End Date</label>
+                    <input type="date" id="end-date">
+                </div>
+                <div class="form-group">
+                    <label for="repo-filter">Repository</label>
+                    <select id="repo-filter">
+                        <option value="">All Repositories</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="status-filter">Status</label>
+                    <select id="status-filter">
+                        <option value="ALL">All</option>
+                        <option value="PASSED">Passed</option>
+                        <option value="FAILED">Failed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="button" class="btn btn-primary" onclick="searchHistory()">Search</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- History Table -->
+        <section class="section">
+            <h2 class="section-title">📋 Review History</h2>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>PR #</th>
+                        <th>Repository</th>
+                        <th>Violations</th>
+                        <th>Status</th>
+                        <th>Reviewed At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table-body">
+                    <tr>
+                        <td colspan="6" style="text-align:center;color:#64748b;padding:2rem;">Loading history...</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Pagination -->
+            <div class="pagination" id="pagination">
+                <button onclick="changePage(-1)" id="prev-btn">← Previous</button>
+                <span id="page-info">Page 1 of 1</span>
+                <button onclick="changePage(1)" id="next-btn">Next →</button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Code Review Bot by Ralph Loop Core</p>
+    </footer>
+
+    <script>
+        let currentPage = 1;
+        const pageSize = 10;
+        let totalItems = 0;
+        let currentData = [];
+
+        // Load history data
+        async function loadHistory() {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            const repo = document.getElementById('repo-filter').value;
+            const status = document.getElementById('status-filter').value;
+            
+            const params = new URLSearchParams({
+                page: currentPage,
+                size: pageSize
+            });
+            
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (repo) params.append('repo', repo);
+            if (status && status !== 'ALL') params.append('status', status);
+            
+            try {
+                const response = await fetch(`/api/history?${params}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentData = data.history || [];
+                    totalItems = data.total || 0;
+                    
+                    renderTable(currentData);
+                    renderPagination(data.totalPages || 1, data.currentPage || 1);
+                    renderStats(data.stats || {});
+                    populateRepoFilter(data.repos || []);
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                document.getElementById('history-table-body').innerHTML = 
+                    '<tr><td colspan="6" style="text-align:center;color:#dc2626;">Failed to load history</td></tr>';
+            }
+        }
+
+        // Render table
+        function renderTable(history) {
+            const tbody = document.getElementById('history-table-body');
+            
+            if (!history || history.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#64748b;">No history found</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            history.forEach(item => {
+                const statusClass = item.status === 'PASSED' ? 'badge-success' : 
+                                   item.errorCount > 0 ? 'badge-error' : 'badge-warning';
+                const statusText = item.status || 'COMPLETED';
+                
+                html += `<tr>
+                    <td><strong>#${item.prNumber || '-'}</strong></td>
+                    <td>${item.repo || '-'}</td>
+                    <td>
+                        <span class="badge badge-error">${item.errorCount || 0} errors</span>
+                        <span class="badge badge-warning">${item.warningCount || 0} warnings</span>
+                        <span class="badge" style="background:#e0f2fe;color:#0369a1">${item.infoCount || 0} info</span>
+                    </td>
+                    <td><span class="badge ${statusClass}">${statusText}</span></td>
+                    <td>${formatDate(item.reviewedAt)}</td>
+                    <td>
+                        <a href="/pr/${item.prId}" class="btn btn-sm btn-primary">View</a>
+                        <button class="btn btn-sm btn-secondary" onclick="downloadReport(${item.id})">Download</button>
+                    </td>
+                </tr>`;
+            });
+            
+            tbody.innerHTML = html;
+        }
+
+        // Render pagination
+        function renderPagination(totalPages, currentPage) {
+            const pageInfo = document.getElementById('page-info');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages || 1}`;
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+
+        // Render stats
+        function renderStats(stats) {
+            document.getElementById('total-reviews').textContent = stats.totalReviews || 0;
+            document.getElementById('avg-violations').textContent = (stats.averageViolations || 0).toFixed(1);
+            document.getElementById('pass-rate').textContent = stats.passRate || '0%';
+            document.getElementById('total-prs').textContent = stats.totalPRs || 0;
+        }
+
+        // Populate repo filter
+        function populateRepoFilter(repos) {
+            const select = document.getElementById('repo-filter');
+            const currentValue = select.value;
+            
+            select.innerHTML = '<option value="">All Repositories</option>';
+            repos.forEach(repo => {
+                select.innerHTML += `<option value="${repo}">${repo}</option>`;
+            });
+            
+            if (currentValue) {
+                select.value = currentValue;
+            }
+        }
+
+        // Change page
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            loadHistory();
+        }
+
+        // Search
+        function searchHistory() {
+            currentPage = 1;
+            loadHistory();
+        }
+
+        // Download report
+        async function downloadReport(id) {
+            try {
+                const response = await fetch(`/api/history/${id}/download`);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `review-${id}.md`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error downloading report:', error);
+                alert('Failed to download report');
+            }
+        }
+
+        // Format date
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleString('ko-KR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set default date range (last 30 days)
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('end-date').value = today.toISOString().split('T')[0];
+            document.getElementById('start-date').value = thirtyDaysAgo.toISOString().split('T')[0];
+            
+            loadHistory();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PR #<span th:text="${pr.number}">42</span> - Code Review Bot</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #16a34a;
+            --warning-color: #ca8a04;
+            --error-color: #dc2626;
+            --info-color: #0891b2;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-color), #1d4ed8);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .pr-meta {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            font-size: 0.95rem;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background-color: white;
+            color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: #f1f5f9;
+        }
+
+        .btn-secondary {
+            background-color: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        .btn-danger {
+            background-color: var(--error-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: #b91c1c;
+        }
+
+        .section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Diff Viewer Styles */
+        .diff-container {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+
+        .file-diff {
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .file-header {
+            background: #f1f5f9;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-path {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+
+        .diff-lines {
+            width: 100%;
+        }
+
+        .diff-line {
+            display: flex;
+        }
+
+        .line-number {
+            width: 50px;
+            padding: 2px 8px;
+            text-align: right;
+            background: #f8fafc;
+            color: #64748b;
+            border-right: 1px solid var(--border-color);
+            user-select: none;
+        }
+
+        .line-content {
+            flex: 1;
+            padding: 2px 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .diff-line.added {
+            background-color: #dcfce7;
+        }
+
+        .diff-line.added .line-number {
+            background-color: #bbf7d0;
+        }
+
+        .diff-line.removed {
+            background-color: #fee2e2;
+        }
+
+        .diff-line.removed .line-number {
+            background-color: #fecaca;
+        }
+
+        .diff-line.context {
+            background-color: #ffffff;
+        }
+
+        /* Review Stats */
+        .review-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-box {
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-box.error {
+            background-color: #fee2e2;
+            border-color: #fca5a5;
+        }
+
+        .stat-box.warning {
+            background-color: #fef3c7;
+            border-color: #fcd34d;
+        }
+
+        .stat-box.info {
+            background-color: #e0f2fe;
+            border-color: #7dd3fc;
+        }
+
+        .stat-box.total {
+            background-color: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Violations Table */
+        .violations-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .violations-table th,
+        .violations-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .violations-table th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .violations-table tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-error {
+            background-color: #fee2e2;
+            color: var(--error-color);
+        }
+
+        .badge-warning {
+            background-color: #fef3c7;
+            color: var(--warning-color);
+        }
+
+        .badge-info {
+            background-color: #e0f2fe;
+            color: var(--info-color);
+        }
+
+        .provider-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .provider-github {
+            background-color: #f0f6fc;
+            color: #0969da;
+        }
+
+        .provider-bitbucket {
+            background-color: #2684ff;
+            color: white;
+        }
+
+        .provider-bitbucket-server {
+            background-color: #0052cc;
+            color: white;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .pr-meta {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .review-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .violations-table {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📋 PR #<span th:text="${pr.number}">42</span></h1>
+            <div class="pr-meta">
+                <div class="meta-item">
+                    <span>📝</span>
+                    <span th:text="${pr.title}">Feature: Add user authentication</span>
+                </div>
+                <div class="meta-item">
+                    <span>👤</span>
+                    <span th:text="${pr.author}">developer1</span>
+                </div>
+                <div class="meta-item">
+                    <span>📁</span>
+                    <span th:text="${pr.repo}">owner/project-a</span>
+                </div>
+                <div class="meta-item">
+                    <span class="provider-badge" 
+                          th:classappend="${pr.provider == 'github'} ? 'provider-github' : (${pr.provider == 'bitbucket'} ? 'provider-bitbucket' : 'provider-bitbucket-server')">
+                        <span th:text="${pr.provider == 'github'} ? 'GitHub' : (${pr.provider == 'bitbucket'} ? 'Bitbucket' : 'Bitbucket Server')">GitHub</span>
+                    </span>
+                </div>
+            </div>
+            <div class="nav-buttons">
+                <a href="/" class="btn btn-secondary">← <span data-i18n="back">뒤로 가기</span></a>
+                <button onclick="rerunReview()" class="btn btn-primary">🔄 <span data-i18n="rerun">리뷰 다시 실행</span></button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Review Statistics -->
+        <section class="section">
+            <h2 class="section-title">📊 <span data-i18n="reviewSummary">리뷰 결과 요약</span></h2>
+            <div id="review-stats" class="review-stats">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p data-i18n="loadingStats">통계 로딩 중...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Diff Viewer -->
+        <section class="section">
+            <h2 class="section-title">📝 <span data-i18n="diffViewer">Diff 뷰어</span></h2>
+            <div id="diff-container" class="diff-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p data-i18n="loadingDiff">Diff 로딩 중...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Violations List -->
+        <section class="section">
+            <h2 class="section-title">⚠️ <span data-i18n="violations">위반 사항</span></h2>
+            <div id="violations-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p data-i18n="loadingViolations">위반 사항 로딩 중...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Code Review Bot by Ralph Loop Core</p>
+    </footer>
+
+    <script>
+        const prId = [[${pr.id}]];
+        const prNumber = [[${pr.number}]];
+        
+        // Internationalization
+        const i18n = {
+            ko: {
+                back: '뒤로 가기',
+                rerun: '리뷰 다시 실행',
+                reviewSummary: '리뷰 결과 요약',
+                diffViewer: 'Diff 뷰어',
+                violations: '위반 사항',
+                loadingStats: '통계 로딩 중...',
+                loadingDiff: 'Diff 로딩 중...',
+                loadingViolations: '위반 사항 로딩 중...',
+                total: '총 위반',
+                errors: '오류',
+                warnings: '경고',
+                info: '정보',
+                file: '파일',
+                line: '라인',
+                rule: '규칙',
+                message: '메시지',
+                noViolations: '위반 사항이 없습니다.',
+                reviewRerunSuccess: '리뷰가 다시 실행되었습니다.',
+                reviewRerunFailed: '리뷰 재실행에 실패했습니다.'
+            },
+            en: {
+                back: 'Back',
+                rerun: 'Rerun Review',
+                reviewSummary: 'Review Summary',
+                diffViewer: 'Diff Viewer',
+                violations: 'Violations',
+                loadingStats: 'Loading stats...',
+                loadingDiff: 'Loading diff...',
+                loadingViolations: 'Loading violations...',
+                total: 'Total',
+                errors: 'Errors',
+                warnings: 'Warnings',
+                info: 'Info',
+                file: 'File',
+                line: 'Line',
+                rule: 'Rule',
+                message: 'Message',
+                noViolations: 'No violations found.',
+                reviewRerunSuccess: 'Review has been rerun.',
+                reviewRerunFailed: 'Failed to rerun review.'
+            }
+        };
+
+        let currentLang = 'ko';
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (i18n[currentLang][key]) {
+                    el.textContent = i18n[currentLang][key];
+                }
+            });
+        }
+
+        // Load review statistics
+        async function loadReviewStats() {
+            try {
+                const response = await fetch(`/api/pr/${prId}/review`);
+                const data = await response.json();
+                
+                const container = document.getElementById('review-stats');
+                
+                if (data.success && data.review) {
+                    const review = data.review;
+                    container.innerHTML = `
+                        <div class="stat-box total">
+                            <span class="stat-number">${review.totalViolations || 0}</span>
+                            <span class="stat-label" data-i18n="total">${i18n[currentLang].total}</span>
+                        </div>
+                        <div class="stat-box error">
+                            <span class="stat-number">${review.errorCount || 0}</span>
+                            <span class="stat-label" data-i18n="errors">${i18n[currentLang].errors}</span>
+                        </div>
+                        <div class="stat-box warning">
+                            <span class="stat-number">${review.warningCount || 0}</span>
+                            <span class="stat-label" data-i18n="warnings">${i18n[currentLang].warnings}</span>
+                        </div>
+                        <div class="stat-box info">
+                            <span class="stat-number">${review.infoCount || 0}</span>
+                            <span class="stat-label" data-i18n="info">${i18n[currentLang].info}</span>
+                        </div>
+                    `;
+                    applyTranslations();
+                } else {
+                    container.innerHTML = `<p style="text-align:center;color:#64748b;">${i18n[currentLang].noViolations}</p>`;
+                }
+            } catch (error) {
+                console.error('Error loading review stats:', error);
+                document.getElementById('review-stats').innerHTML = 
+                    `<p style="text-align:center;color:#dc2626;">Failed to load review stats</p>`;
+            }
+        }
+
+        // Load diff
+        async function loadDiff() {
+            try {
+                const response = await fetch(`/api/pr/${prId}/diff`);
+                const data = await response.json();
+                
+                const container = document.getElementById('diff-container');
+                
+                if (data.success && data.diff && data.diff.files && data.diff.files.length > 0) {
+                    let html = '';
+                    data.diff.files.forEach(file => {
+                        html += `<div class="file-diff">
+                            <div class="file-header">
+                                <span class="file-path">${file.newPath || file.oldPath}</span>
+                                <span>${file.hunks.length} hunks</span>
+                            </div>
+                            <div class="diff-lines">`;
+                        
+                        file.hunks.forEach(hunk => {
+                            hunk.changes.forEach(change => {
+                                let lineClass = 'context';
+                                let linePrefix = ' ';
+                                let lineNum = change.lineNumberNew || change.lineNumberOld || '';
+                                
+                                if (change.type === 'ADDED') {
+                                    lineClass = 'added';
+                                    linePrefix = '+';
+                                } else if (change.type === 'REMOVED') {
+                                    lineClass = 'removed';
+                                    linePrefix = '-';
+                                }
+                                
+                                html += `<div class="diff-line ${lineClass}">
+                                    <div class="line-number">${lineNum}</div>
+                                    <div class="line-content">${linePrefix}${escapeHtml(change.content)}</div>
+                                </div>`;
+                            });
+                        });
+                        
+                        html += `</div></div>`;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = `<p style="text-align:center;color:#64748b;">No diff available</p>`;
+                }
+            } catch (error) {
+                console.error('Error loading diff:', error);
+                document.getElementById('diff-container').innerHTML = 
+                    `<p style="text-align:center;color:#dc2626;">Failed to load diff</p>`;
+            }
+        }
+
+        // Load violations
+        async function loadViolations() {
+            try {
+                const response = await fetch(`/api/pr/${prId}/review`);
+                const data = await response.json();
+                
+                const container = document.getElementById('violations-container');
+                
+                if (data.success && data.review && data.review.fileReviews && data.review.fileReviews.length > 0) {
+                    let html = '<table class="violations-table"><thead><tr>' +
+                        `<th data-i18n="file">${i18n[currentLang].file}</th>` +
+                        `<th data-i18n="line">${i18n[currentLang].line}</th>` +
+                        `<th data-i18n="rule">${i18n[currentLang].rule}</th>` +
+                        `<th data-i18n="message">${i18n[currentLang].message}</th>` +
+                        '</tr></thead><tbody>';
+                    
+                    data.review.fileReviews.forEach(fileReview => {
+                        fileReview.violations.forEach(violation => {
+                            const severityClass = violation.severity === 'ERROR' ? 'badge-error' : 
+                                                 violation.severity === 'WARNING' ? 'badge-warning' : 'badge-info';
+                            
+                            html += `<tr>
+                                <td>${fileReview.filePath}</td>
+                                <td>${violation.lineNumber || '-'}</td>
+                                <td><span class="badge ${severityClass}">${violation.rule}</span></td>
+                                <td>${violation.message}</td>
+                            </tr>`;
+                        });
+                    });
+                    
+                    html += '</tbody></table>';
+                    container.innerHTML = html;
+                    applyTranslations();
+                } else {
+                    container.innerHTML = `<p style="text-align:center;color:#64748b;">${i18n[currentLang].noViolations}</p>`;
+                }
+            } catch (error) {
+                console.error('Error loading violations:', error);
+                document.getElementById('violations-container').innerHTML = 
+                    `<p style="text-align:center;color:#dc2626;">Failed to load violations</p>`;
+            }
+        }
+
+        // Rerun review
+        async function rerunReview() {
+            if (!confirm(currentLang === 'ko' ? '리뷰를 다시 실행하시겠습니까?' : 'Rerun review?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/pr/${prId}/review`, { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(i18n[currentLang].reviewRerunSuccess);
+                    loadReviewStats();
+                    loadViolations();
+                } else {
+                    alert(i18n[currentLang].reviewRerunFailed);
+                }
+            } catch (error) {
+                console.error('Error rerunning review:', error);
+                alert(i18n[currentLang].reviewRerunFailed);
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadReviewStats();
+            loadDiff();
+            loadViolations();
+        });
+    </script>
+</body>
+</html>
