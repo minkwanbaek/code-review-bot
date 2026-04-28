@@ -207,6 +207,74 @@
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
+        .notification-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #bfdbfe;
+            border-left: 4px solid var(--primary-color);
+            border-radius: 8px;
+            background: #eff6ff;
+        }
+
+        .notification-bar.warning {
+            border-color: #fde68a;
+            border-left-color: var(--warning-color);
+            background: #fffbeb;
+        }
+
+        .notification-title {
+            font-weight: 700;
+            margin-bottom: 0.15rem;
+        }
+
+        .notification-meta {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .batch-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .progress-wrap {
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 280px;
+        }
+
+        .progress-wrap.active {
+            display: flex;
+        }
+
+        .progress-bar {
+            width: 180px;
+            height: 10px;
+            border-radius: 9999px;
+            overflow: hidden;
+            background: #e2e8f0;
+        }
+
+        .progress-fill {
+            width: 0;
+            height: 100%;
+            background: var(--success-color);
+            transition: width 0.2s ease;
+        }
+
         .pr-table {
             width: 100%;
             border-collapse: collapse;
@@ -512,6 +580,17 @@
                     <a href="/history" class="nav-link">📜 History</a>
                 </div>
             </h2>
+
+            <div class="notification-bar" th:classappend="${notification.severity}">
+                <div>
+                    <div class="notification-title">Review queue</div>
+                    <div class="notification-meta" th:text="${notification.message}">0 pull requests are waiting for review</div>
+                </div>
+                <div>
+                    <span class="badge badge-warning" th:text="${notification.pendingCount} + ' pending'">0 pending</span>
+                    <span class="badge badge-error" th:text="${notification.failedCount} + ' failed'">0 failed</span>
+                </div>
+            </div>
             
             <!-- Provider Filter Tabs -->
             <div class="provider-tabs">
@@ -525,11 +604,29 @@
             <div class="search-container">
                 <input type="text" class="search-input" id="search-input" placeholder="Search by title, repo, or author..." oninput="searchPRs()">
             </div>
+
+            <div class="batch-toolbar">
+                <div>
+                    <label>
+                        <input type="checkbox" id="select-all-prs" onchange="toggleSelectAll(this.checked)">
+                        Select all visible PRs
+                    </label>
+                    <span id="selected-count" class="notification-meta">0 selected</span>
+                </div>
+                <div class="progress-wrap" id="batch-progress-wrap">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="batch-progress-fill"></div>
+                    </div>
+                    <span id="batch-progress-label">0%</span>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="startBatchReview()">Run selected reviews</button>
+            </div>
             
             <!-- Desktop Table View -->
             <table class="pr-table" id="pr-table">
                 <thead>
                     <tr>
+                        <th></th>
                         <th>Provider</th>
                         <th>PR #</th>
                         <th>Title</th>
@@ -542,11 +639,12 @@
                 </thead>
                 <tbody id="pr-table-body">
                     <tr th:if="${#lists.isEmpty(recentPRs)}">
-                        <td colspan="8" style="text-align:center;color:#64748b;padding:2rem;">
+                        <td colspan="9" style="text-align:center;color:#64748b;padding:2rem;">
                             등록된 PR 이 없습니다. 설정 페이지에서 repo 를 추가하세요.
                         </td>
                     </tr>
                     <tr th:each="pr : ${recentPRs}" th:if="${!#lists.isEmpty(recentPRs)}">
+                        <td><input type="checkbox" class="pr-checkbox" th:value="${pr.id}" onchange="updateSelectedCount()"></td>
                         <td>
                             <span class="provider-badge" 
                                   th:classappend="${pr.provider == 'github'} ? 'provider-github' : (${pr.provider == 'bitbucket'} ? 'provider-bitbucket' : 'provider-bitbucket-server')">
@@ -623,28 +721,9 @@
         </p>
     </footer>
 
-    <script>
+    <script th:inline="javascript">
         let currentProvider = 'all';
-        let allPRs = [];
-        
-        // Initialize with server-side data
-        allPRs = [
-            [[${#strings.listJoin(recentPRs.![provider], ',')}]].length > 0 ? [
-                <th:block th:each="pr, iterStat : ${recentPRs}">
-                    {
-                        id: [[${pr.id}]],
-                        number: [[${pr.number}]],
-                        title: "[[${pr.title}]]",
-                        author: "[[${pr.author}]]",
-                        provider: "[[${pr.provider}]]",
-                        repo: "[[${pr.repo}]]",
-                        state: "[[${pr.state}]]",
-                        updatedAt: "[[${pr.updatedAt}]]",
-                        url: "[[${pr.url}]]"
-                    }<th:block th:text="${iterStat.last} ? '' : ','"/>
-                </th:block>
-            ] : []
-        ][0];
+        let allPRs = /*[[${recentPRs}]]*/ [];
 
         // Filter by provider
         function filterByProvider(provider) {
@@ -689,7 +768,7 @@
             const cardsContainer = document.getElementById('pr-cards');
             
             if (filtered.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:2rem;">No pull requests found</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#64748b;padding:2rem;">No pull requests found</td></tr>';
                 cardsContainer.innerHTML = '<div style="text-align:center;color:#64748b;padding:2rem;">No pull requests found</div>';
                 return;
             }
@@ -708,6 +787,7 @@
                 });
                 
                 tableHtml += `<tr>
+                    <td><input type="checkbox" class="pr-checkbox" value="${pr.id}" onchange="updateSelectedCount()"></td>
                     <td><span class="provider-badge ${providerClass}">${providerName}</span></td>
                     <td><strong>#${pr.number}</strong></td>
                     <td>${escapeHtml(pr.title)}</td>
@@ -749,6 +829,52 @@
                 </div>`;
             });
             cardsContainer.innerHTML = cardsHtml;
+            updateSelectedCount();
+        }
+
+        function toggleSelectAll(checked) {
+            document.querySelectorAll('.pr-checkbox').forEach(checkbox => {
+                checkbox.checked = checked;
+            });
+            updateSelectedCount();
+        }
+
+        function getSelectedPrIds() {
+            return Array.from(document.querySelectorAll('.pr-checkbox:checked'))
+                .map(checkbox => Number(checkbox.value));
+        }
+
+        function updateSelectedCount() {
+            const selected = getSelectedPrIds().length;
+            document.getElementById('selected-count').textContent = `${selected} selected`;
+        }
+
+        function updateBatchProgress(progress) {
+            document.getElementById('batch-progress-wrap').classList.add('active');
+            document.getElementById('batch-progress-fill').style.width = `${progress}%`;
+            document.getElementById('batch-progress-label').textContent = `${progress}%`;
+        }
+
+        async function startBatchReview() {
+            const prIds = getSelectedPrIds();
+            if (prIds.length === 0) {
+                alert('Select at least one pull request');
+                return;
+            }
+
+            updateBatchProgress(5);
+            const response = await fetch('/api/reviews/batch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({prIds})
+            });
+            const data = await response.json();
+            if (data.success && data.batch) {
+                updateBatchProgress(data.batch.progress || 100);
+                await refreshData();
+            } else {
+                alert(data.message || 'Failed to start batch review');
+            }
         }
 
         // Fetch and display recent reviews

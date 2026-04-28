@@ -252,6 +252,47 @@
             font-weight: 600;
         }
 
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .comparison-results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .comparison-column {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            background: #f8fafc;
+        }
+
+        .comparison-column h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .violation-item {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 6px;
+            background: white;
+            border: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+
+        .violation-meta {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+
         footer {
             text-align: center;
             padding: 2rem;
@@ -337,6 +378,25 @@
             </div>
         </section>
 
+        <!-- History Comparison -->
+        <section class="section">
+            <h2 class="section-title">↔️ Compare Review History</h2>
+            <div class="comparison-grid">
+                <div class="form-group">
+                    <label for="baseline-review">Baseline Review</label>
+                    <select id="baseline-review"></select>
+                </div>
+                <div class="form-group">
+                    <label for="target-review">Target Review</label>
+                    <select id="target-review"></select>
+                </div>
+                <div class="form-group">
+                    <button type="button" class="btn btn-primary" onclick="compareHistory()">Compare</button>
+                </div>
+            </div>
+            <div id="comparison-results"></div>
+        </section>
+
         <!-- History Table -->
         <section class="section">
             <h2 class="section-title">📋 Review History</h2>
@@ -406,6 +466,7 @@
                     renderPagination(data.totalPages || 1, data.currentPage || 1);
                     renderStats(data.stats || {});
                     populateRepoFilter(data.repos || []);
+                    populateComparisonSelectors(currentData);
                 }
             } catch (error) {
                 console.error('Error loading history:', error);
@@ -441,6 +502,7 @@
                     <td>${formatDate(item.reviewedAt)}</td>
                     <td>
                         <a href="/pr/${item.prId}" class="btn btn-sm btn-primary">View</a>
+                        <button class="btn btn-sm btn-primary" onclick="selectTargetForCompare(${item.id})">Compare</button>
                         <button class="btn btn-sm btn-secondary" onclick="downloadReport(${item.id})">Download</button>
                     </td>
                 </tr>`;
@@ -481,6 +543,67 @@
             if (currentValue) {
                 select.value = currentValue;
             }
+        }
+
+        function populateComparisonSelectors(history) {
+            const baselineSelect = document.getElementById('baseline-review');
+            const targetSelect = document.getElementById('target-review');
+            const options = history.map(item =>
+                `<option value="${item.id}">#${item.prNumber || '-'} ${item.repo || '-'} ${formatDate(item.reviewedAt)}</option>`
+            ).join('');
+
+            baselineSelect.innerHTML = options || '<option value="">No reviews</option>';
+            targetSelect.innerHTML = options || '<option value="">No reviews</option>';
+
+            if (history.length >= 2) {
+                baselineSelect.value = history[0].id;
+                targetSelect.value = history[1].id;
+            }
+        }
+
+        function selectTargetForCompare(id) {
+            document.getElementById('target-review').value = id;
+            compareHistory();
+        }
+
+        async function compareHistory() {
+            const baselineId = document.getElementById('baseline-review').value;
+            const targetId = document.getElementById('target-review').value;
+            const results = document.getElementById('comparison-results');
+
+            if (!baselineId || !targetId || baselineId === targetId) {
+                results.innerHTML = '<p style="color:#64748b;margin-top:1rem;">Choose two different reviews.</p>';
+                return;
+            }
+
+            const response = await fetch(`/api/history/compare?baselineId=${baselineId}&targetId=${targetId}`);
+            const data = await response.json();
+            if (!data.success) {
+                results.innerHTML = `<p style="color:#dc2626;margin-top:1rem;">${data.message || 'Comparison failed'}</p>`;
+                return;
+            }
+
+            renderComparison(data.comparison);
+        }
+
+        function renderComparison(comparison) {
+            const results = document.getElementById('comparison-results');
+            results.innerHTML = `<div class="comparison-results">
+                ${renderViolationColumn('New violations', comparison.newViolations || [], 'badge-error')}
+                ${renderViolationColumn('Resolved violations', comparison.resolvedViolations || [], 'badge-success')}
+                ${renderViolationColumn('Unchanged violations', comparison.unchangedViolations || [], 'badge-warning')}
+            </div>`;
+        }
+
+        function renderViolationColumn(title, violations, badgeClass) {
+            const items = violations.length === 0
+                ? '<p style="color:#64748b;">None</p>'
+                : violations.map(violation => `<div class="violation-item">
+                    <span class="badge ${badgeClass}">${escapeHtml(violation.rule || '-')}</span>
+                    <div>${escapeHtml(violation.message || '-')}</div>
+                    <div class="violation-meta">${escapeHtml(violation.file || '-')} line ${violation.lineNumber || '-'}</div>
+                </div>`).join('');
+            return `<div class="comparison-column"><h3>${title} (${violations.length})</h3>${items}</div>`;
         }
 
         // Change page
@@ -526,6 +649,12 @@
                 hour: '2-digit',
                 minute: '2-digit'
             });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Initialize

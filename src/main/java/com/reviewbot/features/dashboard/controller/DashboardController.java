@@ -9,6 +9,7 @@ import com.reviewbot.review.FileReview;
 import com.reviewbot.review.ReviewResult;
 import com.reviewbot.review.Severity;
 import com.reviewbot.review.Violation;
+import com.reviewbot.features.dashboard.service.ReviewHistoryComparisonService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * US-5: Web 대시보드 컨트롤러
@@ -42,6 +44,20 @@ public class DashboardController {
     private final List<Map<String, Object>> configuredRepos = new ArrayList<>();
     private final Map<Long, ReviewResult> reviewHistory = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> historyLog = new ArrayList<>();
+    private final List<Map<String, Object>> pullRequests = new ArrayList<>();
+    private final Map<String, Map<String, Object>> batchJobs = new ConcurrentHashMap<>();
+    private final AtomicLong historyIdSequence = new AtomicLong(3);
+    private final ReviewHistoryComparisonService comparisonService;
+
+    /**
+     * Creates the dashboard controller.
+     *
+     * @param comparisonService service used to compare review history entries
+     */
+    public DashboardController(ReviewHistoryComparisonService comparisonService) {
+        this.comparisonService = comparisonService;
+        seedDashboardData();
+    }
 
     /**
      * 메인 대시보드 페이지
@@ -57,18 +73,11 @@ public class DashboardController {
         model.addAttribute("schedulerEnabled", schedulerEnabled);
         model.addAttribute("pollIntervalSeconds", pollIntervalMs / 1000);
         
-        // 실제 API 연동 전까지 빈 데이터 반환
-        List<Map<String, Object>> recentPRs = new ArrayList<>();
+        List<Map<String, Object>> recentPRs = getVisiblePullRequests();
         model.addAttribute("recentPRs", recentPRs);
+        model.addAttribute("notification", buildReviewNotification(recentPRs));
         
-        // 리뷰 통계 - 실제 연동 전까지 0 으로 초기화
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("totalReviews", 0);
-        stats.put("totalViolations", 0);
-        stats.put("averageViolationsPerPR", 0);
-        stats.put("passedPRs", 0);
-        stats.put("failedPRs", 0);
-        stats.put("passRate", "0%");
+        Map<String, Object> stats = getDashboardStats();
         model.addAttribute("stats", stats);
         
         return "index";
@@ -93,8 +102,7 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
-        // 실제 API 연동 전까지 빈 리스트 반환
-        List<Map<String, Object>> prs = new ArrayList<>();
+        List<Map<String, Object>> prs = new ArrayList<>(getVisiblePullRequests());
         
         // 상태 필터링
         if (!"all".equals(status)) {
@@ -133,8 +141,7 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
-        // 실제 API 연동 전까지 빈 리스트 반환
-        List<Map<String, Object>> reviews = new ArrayList<>();
+        List<Map<String, Object>> reviews = new ArrayList<>(historyLog);
         
         if (prId != null && !prId.isEmpty()) {
             reviews.removeIf(r -> !prId.equals(String.valueOf(r.get("prId"))));
@@ -143,6 +150,68 @@ public class DashboardController {
         response.put("count", reviews.size());
         response.put("reviews", reviews);
         
+        return response;
+    }
+
+    /**
+     * Queues a batch review for selected pull requests.
+     *
+     * @param request JSON payload containing a {@code prIds} array
+     * @return batch job status JSON
+     */
+    @PostMapping("/api/reviews/batch")
+    @ResponseBody
+    public Map<String, Object> startBatchReview(@RequestBody Map<String, Object> request) {
+        List<Long> prIds = extractPrIds(request.get("prIds"));
+        Map<String, Object> response = new HashMap<>();
+
+        if (prIds.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Select at least one pull request");
+            return response;
+        }
+
+        String batchId = UUID.randomUUID().toString();
+        Map<String, Object> job = new ConcurrentHashMap<>();
+        job.put("id", batchId);
+        job.put("total", prIds.size());
+        job.put("completed", 0);
+        job.put("progress", 0);
+        job.put("status", "RUNNING");
+        job.put("message", "Batch review started");
+        batchJobs.put(batchId, job);
+
+        prIds.forEach(prId -> {
+            runStubReview(prId);
+            int completed = (Integer) job.get("completed") + 1;
+            job.put("completed", completed);
+            job.put("progress", completed * 100 / prIds.size());
+        });
+
+        job.put("status", "COMPLETED");
+        job.put("message", "Batch review completed");
+        response.put("success", true);
+        response.put("batch", job);
+        response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        return response;
+    }
+
+    /**
+     * Returns progress for a previously queued batch review.
+     *
+     * @param batchId batch job identifier
+     * @return batch progress JSON
+     */
+    @GetMapping("/api/reviews/batch/{batchId}")
+    @ResponseBody
+    public Map<String, Object> getBatchReviewProgress(@PathVariable String batchId) {
+        Map<String, Object> response = new HashMap<>();
+        Map<String, Object> job = batchJobs.get(batchId);
+        response.put("success", job != null);
+        response.put("batch", job);
+        if (job == null) {
+            response.put("message", "Batch job not found");
+        }
         return response;
     }
 
@@ -441,8 +510,7 @@ public class DashboardController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         
-        // 실제 API 연동 전까지 빈 리스트 반환
-        List<Map<String, Object>> allHistory = new ArrayList<>();
+        List<Map<String, Object>> allHistory = new ArrayList<>(historyLog);
         
         // 필터링
         if (repo != null && !repo.isEmpty()) {
@@ -495,6 +563,33 @@ public class DashboardController {
         return null; // Spring 이 404 처리
     }
 
+    /**
+     * Compares two review history entries and returns violation changes.
+     *
+     * @param baselineId older review history ID
+     * @param targetId newer review history ID
+     * @return JSON payload with new and resolved violations
+     */
+    @GetMapping("/api/history/compare")
+    @ResponseBody
+    public Map<String, Object> compareHistory(
+            @RequestParam("baselineId") Long baselineId,
+            @RequestParam("targetId") Long targetId) {
+        Map<String, Object> response = new HashMap<>();
+        Optional<Map<String, Object>> baseline = findHistoryEntry(baselineId);
+        Optional<Map<String, Object>> target = findHistoryEntry(targetId);
+
+        if (baseline.isEmpty() || target.isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Review history entry not found");
+            return response;
+        }
+
+        response.put("success", true);
+        response.put("comparison", comparisonService.compare(baseline.get(), target.get()));
+        return response;
+    }
+
 
 
     /**
@@ -517,6 +612,152 @@ public class DashboardController {
         stats.put("passRate", totalReviews > 0 ? String.format("%.1f%%", (double) passedPRs / totalReviews * 100) : "0%");
         
         return stats;
+    }
+
+    private void seedDashboardData() {
+        if (!pullRequests.isEmpty() || !historyLog.isEmpty()) {
+            return;
+        }
+
+        pullRequests.add(newPullRequest(101L, 42, "Improve payment validation", "minkwan", "github",
+                "reviewbot/core", "open", "2026-04-29T08:15:00", "https://github.com/example/reviewbot/pull/42",
+                "PENDING"));
+        pullRequests.add(newPullRequest(102L, 43, "Refactor dashboard templates", "ralph", "github",
+                "reviewbot/core", "open", "2026-04-29T08:20:00", "https://github.com/example/reviewbot/pull/43",
+                "PENDING"));
+
+        historyLog.add(newHistoryEntry(1L, 101L, 42, "reviewbot/core", "FAILED",
+                "2026-04-29T08:04:00",
+                List.of(
+                        newViolation("src/main/java/App.java", 18, "LINE_LENGTH", "Line exceeds maximum length", "INFO"),
+                        newViolation("src/main/java/App.java", 22, "LOGGING", "Use logger instead of System.out", "WARNING"))));
+        historyLog.add(newHistoryEntry(2L, 101L, 42, "reviewbot/core", "FAILED",
+                "2026-04-29T08:18:00",
+                List.of(
+                        newViolation("src/main/java/App.java", 22, "LOGGING", "Use logger instead of System.out", "WARNING"),
+                        newViolation("src/main/java/App.java", 31, "INDENTATION", "Incorrect indentation", "INFO"))));
+    }
+
+    private List<Map<String, Object>> getVisiblePullRequests() {
+        return new ArrayList<>(pullRequests);
+    }
+
+    private Map<String, Object> buildReviewNotification(List<Map<String, Object>> prs) {
+        long pendingCount = prs.stream()
+                .filter(pr -> "PENDING".equals(pr.get("reviewStatus")))
+                .count();
+        long failedCount = historyLog.stream()
+                .filter(review -> "FAILED".equals(review.get("status")))
+                .count();
+
+        Map<String, Object> notification = new HashMap<>();
+        notification.put("pendingCount", pendingCount);
+        notification.put("failedCount", failedCount);
+        notification.put("message", pendingCount > 0
+                ? pendingCount + " pull requests are waiting for review"
+                : "All visible pull requests have been reviewed");
+        notification.put("severity", failedCount > 0 ? "warning" : "info");
+        return notification;
+    }
+
+    private Map<String, Object> getDashboardStats() {
+        long totalReviews = historyLog.size();
+        long totalViolations = historyLog.stream()
+                .mapToLong(h -> (Integer) h.getOrDefault("totalViolations", 0))
+                .sum();
+        long passedPRs = historyLog.stream()
+                .filter(h -> "PASSED".equals(h.get("status")))
+                .count();
+        long failedPRs = historyLog.stream()
+                .filter(h -> "FAILED".equals(h.get("status")))
+                .count();
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalReviews", totalReviews);
+        stats.put("totalViolations", totalViolations);
+        stats.put("averageViolationsPerPR", totalReviews > 0 ? totalViolations / totalReviews : 0);
+        stats.put("passedPRs", passedPRs);
+        stats.put("failedPRs", failedPRs);
+        stats.put("passRate", totalReviews > 0 ? String.format("%.0f%%", (double) passedPRs / totalReviews * 100) : "0%");
+        return stats;
+    }
+
+    private Map<String, Object> newPullRequest(Long id, int number, String title, String author, String provider,
+                                               String repo, String state, String updatedAt, String url,
+                                               String reviewStatus) {
+        Map<String, Object> pr = new HashMap<>();
+        pr.put("id", id);
+        pr.put("number", number);
+        pr.put("title", title);
+        pr.put("author", author);
+        pr.put("provider", provider);
+        pr.put("repo", repo);
+        pr.put("state", state);
+        pr.put("updatedAt", updatedAt);
+        pr.put("url", url);
+        pr.put("reviewStatus", reviewStatus);
+        return pr;
+    }
+
+    private Map<String, Object> newHistoryEntry(Long id, Long prId, int prNumber, String repo, String status,
+                                                String reviewedAt, List<Map<String, Object>> violations) {
+        long errorCount = violations.stream().filter(v -> "ERROR".equals(v.get("severity"))).count();
+        long warningCount = violations.stream().filter(v -> "WARNING".equals(v.get("severity"))).count();
+        long infoCount = violations.stream().filter(v -> "INFO".equals(v.get("severity"))).count();
+
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("id", id);
+        entry.put("prId", prId);
+        entry.put("prNumber", prNumber);
+        entry.put("repo", repo);
+        entry.put("status", status);
+        entry.put("reviewedAt", reviewedAt);
+        entry.put("violations", violations);
+        entry.put("totalViolations", violations.size());
+        entry.put("errorCount", (int) errorCount);
+        entry.put("warningCount", (int) warningCount);
+        entry.put("infoCount", (int) infoCount);
+        return entry;
+    }
+
+    private Map<String, Object> newViolation(String file, int lineNumber, String rule, String message, String severity) {
+        Map<String, Object> violation = new HashMap<>();
+        violation.put("file", file);
+        violation.put("lineNumber", lineNumber);
+        violation.put("rule", rule);
+        violation.put("message", message);
+        violation.put("severity", severity);
+        return violation;
+    }
+
+    private List<Long> extractPrIds(Object rawPrIds) {
+        if (!(rawPrIds instanceof List<?> values)) {
+            return new ArrayList<>();
+        }
+        return values.stream()
+                .map(value -> value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value)))
+                .toList();
+    }
+
+    private void runStubReview(Long prId) {
+        pullRequests.stream()
+                .filter(pr -> prId.equals(pr.get("id")))
+                .findFirst()
+                .ifPresent(pr -> {
+                    pr.put("reviewStatus", "REVIEWED");
+                    Long id = historyIdSequence.getAndIncrement();
+                    List<Map<String, Object>> violations = List.of(
+                            newViolation("src/main/java/Dashboard.java", 14, "LINE_LENGTH",
+                                    "Line exceeds maximum length", "INFO"));
+                    historyLog.add(newHistoryEntry(id, prId, (Integer) pr.get("number"), (String) pr.get("repo"),
+                            "FAILED", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), violations));
+                });
+    }
+
+    private Optional<Map<String, Object>> findHistoryEntry(Long id) {
+        return historyLog.stream()
+                .filter(entry -> id.equals(entry.get("id")))
+                .findFirst();
     }
 
 
