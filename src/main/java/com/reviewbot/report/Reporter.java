@@ -36,6 +36,7 @@ public class Reporter {
     private String githubToken;
     private String bitbucketUsername;
     private String bitbucketAppPassword;
+    private String bitbucketServerToken;
 
     public enum OutputFormat {
         TERMINAL, FILE, PR, ALL
@@ -50,6 +51,7 @@ public class Reporter {
         this.githubToken = System.getenv("GITHUB_TOKEN");
         this.bitbucketUsername = System.getenv("BITBUCKET_USERNAME");
         this.bitbucketAppPassword = System.getenv("BITBUCKET_APP_PASSWORD");
+        this.bitbucketServerToken = System.getenv("BITBUCKET_SERVER_TOKEN");
     }
 
     public Reporter setOutputFormat(OutputFormat format) {
@@ -70,6 +72,11 @@ public class Reporter {
     public Reporter setBitbucketCredentials(String username, String appPassword) {
         this.bitbucketUsername = username;
         this.bitbucketAppPassword = appPassword;
+        return this;
+    }
+
+    public Reporter setBitbucketServerToken(String token) {
+        this.bitbucketServerToken = token;
         return this;
     }
 
@@ -277,8 +284,11 @@ public class Reporter {
             postToGitHubPR(prUrl, result);
         } else if (prUrl.contains("bitbucket.org")) {
             postToBitbucketPR(prUrl, result);
+        } else if (prUrl.contains("bitbucket")) {
+            // Bitbucket Server 감지 (온프레미스)
+            postToBitbucketServerPR(prUrl, result);
         } else {
-            throw new IllegalArgumentException("Unsupported PR URL. Only GitHub and Bitbucket are supported.");
+            throw new IllegalArgumentException("Unsupported PR URL. Only GitHub, Bitbucket Cloud, and Bitbucket Server are supported.");
         }
     }
 
@@ -330,6 +340,7 @@ public class Reporter {
 
     /**
      * Bitbucket PR 에 코멘트
+     * Bitbucket Cloud API 사용
      * 
      * @param prUrl Bitbucket PR URL (형식: https://bitbucket.org/{workspace}/{repo}/pull-requests/{number})
      * @param result 리뷰 결과
@@ -367,10 +378,64 @@ public class Reporter {
             int statusCode = response.getCode();
             
             if (statusCode >= 200 && statusCode < 300) {
-                log.info("Successfully posted comment to Bitbucket PR #{}", prNumber);
+                log.info("Successfully posted comment to Bitbucket Cloud PR #{}", prNumber);
             } else {
-                log.error("Failed to post to Bitbucket PR. Status: {}", statusCode);
+                log.error("Failed to post to Bitbucket Cloud PR. Status: {}", statusCode);
                 throw new IOException("Bitbucket API error: " + statusCode);
+            }
+        }
+    }
+
+    /**
+     * Bitbucket Server PR 에 코멘트
+     * Bitbucket Server REST API 1.0 사용
+     * 
+     * @param prUrl Bitbucket Server PR URL (형식: https://{host}/projects/{project}/repos/{repo}/pull-requests/{number})
+     * @param result 리뷰 결과
+     * @throws IOException API 호출 실패 시
+     */
+    public void postToBitbucketServerPR(String prUrl, ReviewResult result) throws IOException {
+        if (bitbucketServerToken == null || bitbucketServerToken.isEmpty()) {
+            log.error("Bitbucket Server token not configured. Set BITBUCKET_SERVER_TOKEN.");
+            throw new IllegalStateException("Bitbucket Server token not configured");
+        }
+
+        // URL 에서 host, project, repo, PR 번호 추출
+        // 형식: https://{host}/projects/{project}/repos/{repo}/pull-requests/{number}
+        String[] parts = prUrl.split("/");
+        if (parts.length < 9) {
+            throw new IllegalArgumentException("Invalid Bitbucket Server PR URL format");
+        }
+        
+        // host 추출 (https: 다음)
+        String host = parts[0] + "//" + parts[2];
+        // project 는 "projects" 다음
+        String project = parts[4];
+        // repo 는 "repos" 다음
+        String repo = parts[6];
+        // PR 번호는 마지막 부분
+        String prNumber = parts[8];
+
+        String apiEndpoint = String.format("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s/comments", 
+            host, project, repo, prNumber);
+        String commentBody = generateReport(result);
+
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(apiEndpoint);
+            post.setHeader("Authorization", "Bearer " + bitbucketServerToken);
+            post.setHeader("Content-Type", "application/json");
+
+            String jsonBody = String.format("{\"text\": %s}", escapeJson(commentBody));
+            post.setEntity(new StringEntity(jsonBody, ContentType.APPLICATION_JSON));
+
+            var response = httpClient.execute(post);
+            int statusCode = response.getCode();
+            
+            if (statusCode >= 200 && statusCode < 300) {
+                log.info("Successfully posted comment to Bitbucket Server PR #{}", prNumber);
+            } else {
+                log.error("Failed to post to Bitbucket Server PR. Status: {}", statusCode);
+                throw new IOException("Bitbucket Server API error: " + statusCode);
             }
         }
     }

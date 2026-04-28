@@ -50,6 +50,14 @@ reviewbot:
     app-password: ${BITBUCKET_APP_PASSWORD:}
     api-url: https://api.bitbucket.org/2.0
   
+  # Bitbucket Server (온프레미스) integration
+  bitbucket-server:
+    token: ${BITBUCKET_SERVER_TOKEN:}
+    repos:
+      - host: ${BITBUCKET_SERVER_HOST:}
+        project: ${BITBUCKET_SERVER_PROJECT:}
+        repo: ${BITBUCKET_SERVER_REPO:}
+  
   # Review configuration
   review:
     auto-trigger: true

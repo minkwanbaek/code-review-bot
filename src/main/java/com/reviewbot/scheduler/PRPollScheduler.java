@@ -50,6 +50,9 @@ public class PRPollScheduler {
     @Value("${reviewbot.bitbucket.app-password:}")
     private String bitbucketAppPassword;
 
+    @Value("${reviewbot.bitbucket-server.token:}")
+    private String bitbucketServerToken;
+
     @Value("${reviewbot.output.default-lang:ko}")
     private String defaultLang;
 
@@ -77,8 +80,11 @@ public class PRPollScheduler {
             // GitHub PRs 확인
             pollGitHubPullRequests();
             
-            // Bitbucket PRs 확인
+            // Bitbucket Cloud PRs 확인
             pollBitbucketPullRequests();
+            
+            // Bitbucket Server PRs 확인
+            pollBitbucketServerPullRequests();
             
             log.info("PR polling completed successfully");
         } catch (Exception e) {
@@ -119,7 +125,7 @@ public class PRPollScheduler {
      * Bitbucket Pull Requests 폴링
      */
     private void pollBitbucketPullRequests() {
-        log.debug("Polling Bitbucket pull requests...");
+        log.debug("Polling Bitbucket Cloud pull requests...");
         
         // 설정에서 Bitbucket repos 가져오기
         List<Map<String, String>> bitbucketRepos = getBitbucketReposFromConfig();
@@ -140,6 +146,37 @@ public class PRPollScheduler {
                 }
             } catch (Exception e) {
                 log.error("Error polling Bitbucket repo {}/{}: {}", workspace, repoName, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Bitbucket Server Pull Requests 폴링
+     * 온프레미스 Bitbucket Server 인스턴스에서 PR 을 조회
+     */
+    private void pollBitbucketServerPullRequests() {
+        log.debug("Polling Bitbucket Server pull requests...");
+        
+        // 설정에서 Bitbucket Server repos 가져오기
+        List<Map<String, String>> bitbucketServerRepos = getBitbucketServerReposFromConfig();
+        
+        for (Map<String, String> repo : bitbucketServerRepos) {
+            String host = repo.get("host");
+            String project = repo.get("project");
+            String repoName = repo.get("repo");
+            
+            if (host == null || project == null || repoName == null) {
+                continue;
+            }
+            
+            try {
+                List<Map<String, Object>> openPRs = fetchBitbucketServerPullRequests(host, project, repoName);
+                
+                for (Map<String, Object> pr : openPRs) {
+                    processBitbucketServerPR(host, project, repoName, pr);
+                }
+            } catch (Exception e) {
+                log.error("Error polling Bitbucket Server repo {}/{}/{}: {}", host, project, repoName, e.getMessage());
             }
         }
     }
@@ -202,7 +239,7 @@ public class PRPollScheduler {
             return;
         }
         
-        log.info("Processing Bitbucket PR #{} from {}/{}", prNumber, workspace, repo);
+        log.info("Processing Bitbucket Cloud PR #{} from {}/{}", prNumber, workspace, repo);
         
         try {
             // Diff 가져오기
@@ -230,9 +267,61 @@ public class PRPollScheduler {
             // 마지막 확인 시간 업데이트
             lastCheckedPRs.put(prKey, prUpdatedAt);
             
-            log.info("Completed review for Bitbucket PR #{} - {} violations found", prNumber, result.getTotalViolations());
+            log.info("Completed review for Bitbucket Cloud PR #{} - {} violations found", prNumber, result.getTotalViolations());
         } catch (Exception e) {
-            log.error("Error processing Bitbucket PR #{}: {}", prNumber, e.getMessage());
+            log.error("Error processing Bitbucket Cloud PR #{}: {}", prNumber, e.getMessage());
+        }
+    }
+
+    /**
+     * Bitbucket Server PR 처리
+     * 
+     * @param host Bitbucket Server 호스트 URL
+     * @param project 프로젝트 키
+     * @param repo 저장소 이름
+     * @param pr PR 정보
+     */
+    private void processBitbucketServerPR(String host, String project, String repo, Map<String, Object> pr) {
+        int prNumber = (Integer) pr.get("id");
+        String prKey = String.format("bitbucket-server/%s/%s/%s/%d", host, project, repo, prNumber);
+        
+        // Bitbucket Server 는 updatedTime 필드 사용 (timestamp)
+        Object updatedTimeObj = pr.get("updatedTime");
+        LocalDateTime prUpdatedAt = LocalDateTime.now();
+        if (updatedTimeObj instanceof Long) {
+            prUpdatedAt = LocalDateTime.ofEpochSecond((Long) updatedTimeObj / 1000, 0, java.time.ZoneOffset.UTC);
+        }
+        
+        LocalDateTime lastChecked = lastCheckedPRs.get(prKey);
+        
+        // 이미 확인한 PR 이고 업데이트되지 않았으면 스킵
+        if (lastChecked != null && !prUpdatedAt.isAfter(lastChecked)) {
+            log.debug("PR {} already reviewed, skipping", prKey);
+            return;
+        }
+        
+        log.info("Processing Bitbucket Server PR #{} from {}/{}/{}", prNumber, host, project, repo);
+        
+        try {
+            // Diff 가져오기
+            StructuredDiff diff = fetchBitbucketServerPRDiff(host, project, repo, prNumber);
+            
+            // Conventions 로드
+            Conventions conventions = loadConventions();
+            
+            // 리뷰 실행
+            ReviewResult result = reviewRunner.review(diff, conventions);
+            
+            // 결과 리포트
+            String prUrl = String.format("%s/projects/%s/repos/%s/pull-requests/%d", host, project, repo, prNumber);
+            reportResults(prKey, prUrl, result);
+            
+            // 마지막 확인 시간 업데이트
+            lastCheckedPRs.put(prKey, prUpdatedAt);
+            
+            log.info("Completed review for Bitbucket Server PR #{} - {} violations found", prNumber, result.getTotalViolations());
+        } catch (Exception e) {
+            log.error("Error processing Bitbucket Server PR #{}: {}", prNumber, e.getMessage());
         }
     }
 
@@ -261,6 +350,7 @@ public class PRPollScheduler {
 
     /**
      * Bitbucket Pull Requests 가져오기
+     * Bitbucket Cloud API 사용
      */
     private List<Map<String, Object>> fetchBitbucketPullRequests(String workspace, String repo) throws IOException, InterruptedException {
         String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/pullrequests?state=OPEN", workspace, repo);
@@ -278,6 +368,40 @@ public class PRPollScheduler {
         
         if (response.statusCode() != 200) {
             throw new IOException("Bitbucket API error: " + response.statusCode());
+        }
+        
+        // JSON 파싱 (values 배열 추출)
+        Map<String, Object> json = parseJsonObject(response.body());
+        Object values = json.get("values");
+        if (values instanceof List) {
+            return (List<Map<String, Object>>) values;
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Bitbucket Server Pull Requests 가져오기
+     * Bitbucket Server REST API 1.0 사용
+     * 
+     * @param host Bitbucket Server 호스트 URL
+     * @param project 프로젝트 키
+     * @param repo 저장소 이름
+     * @return 열린 PR 목록
+     */
+    private List<Map<String, Object>> fetchBitbucketServerPullRequests(String host, String project, String repo) throws IOException, InterruptedException {
+        String url = String.format("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests?state=OPEN", host, project, repo);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer " + bitbucketServerToken)
+            .GET()
+            .build();
+        
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        
+        if (response.statusCode() != 200) {
+            throw new IOException("Bitbucket Server API error: " + response.statusCode());
         }
         
         // JSON 파싱 (values 배열 추출)
@@ -314,6 +438,7 @@ public class PRPollScheduler {
 
     /**
      * Bitbucket PR Diff 가져오기
+     * Bitbucket Cloud API 사용
      */
     private StructuredDiff fetchBitbucketPRDiff(String workspace, String repo, int prNumber) throws IOException, InterruptedException {
         String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/pullrequests/%d/diff", workspace, repo, prNumber);
@@ -331,6 +456,36 @@ public class PRPollScheduler {
         
         if (response.statusCode() != 200) {
             throw new IOException("Bitbucket API error: " + response.statusCode());
+        }
+        
+        // Diff 파싱하여 StructuredDiff 로 변환
+        return parseDiffToStructuredDiff(response.body());
+    }
+
+    /**
+     * Bitbucket Server PR Diff 가져오기
+     * Bitbucket Server REST API 1.0 사용
+     * 
+     * @param host Bitbucket Server 호스트 URL
+     * @param project 프로젝트 키
+     * @param repo 저장소 이름
+     * @param prNumber PR 번호
+     * @return 파싱된 Diff
+     */
+    private StructuredDiff fetchBitbucketServerPRDiff(String host, String project, String repo, int prNumber) throws IOException, InterruptedException {
+        String url = String.format("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/diff", host, project, repo, prNumber);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Accept", "application/diff")
+            .header("Authorization", "Bearer " + bitbucketServerToken)
+            .GET()
+            .build();
+        
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        
+        if (response.statusCode() != 200) {
+            throw new IOException("Bitbucket Server API error: " + response.statusCode());
         }
         
         // Diff 파싱하여 StructuredDiff 로 변환
@@ -422,6 +577,30 @@ public class PRPollScheduler {
         if (workspace != null && repo != null) {
             Map<String, String> repoConfig = new HashMap<>();
             repoConfig.put("workspace", workspace);
+            repoConfig.put("repo", repo);
+            repos.add(repoConfig);
+        }
+        
+        return repos;
+    }
+
+    /**
+     * 설정에서 Bitbucket Server repos 가져오기
+     * application.yml 의 reviewbot.bitbucket-server.repos 에서 읽음
+     * 
+     * @return Bitbucket Server 설정 목록
+     */
+    private List<Map<String, String>> getBitbucketServerReposFromConfig() {
+        List<Map<String, String>> repos = new ArrayList<>();
+        
+        String host = System.getenv("BITBUCKET_SERVER_HOST");
+        String project = System.getenv("BITBUCKET_SERVER_PROJECT");
+        String repo = System.getenv("BITBUCKET_SERVER_REPO");
+        
+        if (host != null && project != null && repo != null) {
+            Map<String, String> repoConfig = new HashMap<>();
+            repoConfig.put("host", host);
+            repoConfig.put("project", project);
             repoConfig.put("repo", repo);
             repos.add(repoConfig);
         }
