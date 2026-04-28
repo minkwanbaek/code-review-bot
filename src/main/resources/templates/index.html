@@ -556,7 +556,7 @@
                                   th:classappend="${pr.state == 'open'} ? 'badge-open' : 'badge-closed'"
                                   th:text="${pr.state}">open</span>
                         </td>
-                        <td th:text="${#temporals.format(#temporals.create(pr.updatedAt), 'yyyy-MM-dd HH:mm')}">2024-01-01 12:00</td>
+                        <td th:text="${#strings.substring(pr.updatedAt, 0, 16).replace('T', ' ')}">2024-01-01 12:00</td>
                         <td>
                             <a th:href="@{'/pr/' + ${pr.id}}" class="btn btn-primary btn-sm">View</a>
                         </td>
