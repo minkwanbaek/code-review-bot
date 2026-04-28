@@ -33,6 +33,9 @@ dependencies {
     
     // Scheduling
     implementation 'org.springframework.boot:spring-boot-starter-quartz'
+
+    // Health checks for Docker
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'

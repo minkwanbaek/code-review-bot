@@ -260,10 +260,9 @@ public class DashboardController {
      */
     @GetMapping("/pr/{id}")
     public String getPRDetail(@PathVariable Long id, Model model) {
-        // 실제 API 연동 전까지 빈 페이지 반환
-        // TODO: 실제 PR 데이터 조회 로직 구현
-        log.warn("PR detail requested for id={}, but no data available yet", id);
-        return "redirect:/";
+        model.addAttribute("title", "Pull Request Detail");
+        model.addAttribute("pr", findPullRequest(id).orElseGet(() -> createPlaceholderPullRequest(id)));
+        return "pr-detail";
     }
 
     /**
@@ -758,6 +757,26 @@ public class DashboardController {
         return historyLog.stream()
                 .filter(entry -> id.equals(entry.get("id")))
                 .findFirst();
+    }
+
+    private Optional<Map<String, Object>> findPullRequest(Long id) {
+        return pullRequests.stream()
+                .filter(pr -> id.equals(pr.get("id")))
+                .findFirst();
+    }
+
+    private Map<String, Object> createPlaceholderPullRequest(Long id) {
+        Map<String, Object> pr = new HashMap<>();
+        pr.put("id", id);
+        pr.put("number", id);
+        pr.put("title", "Pull request #" + id);
+        pr.put("author", "unknown");
+        pr.put("repo", "unknown/repository");
+        pr.put("provider", "github");
+        pr.put("state", "open");
+        pr.put("url", "#");
+        log.warn("PR detail requested for id={}, using placeholder data", id);
+        return pr;
     }
 
 
