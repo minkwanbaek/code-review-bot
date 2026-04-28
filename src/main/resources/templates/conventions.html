@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">Conventions</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #16a34a;
+            --error-color: #dc2626;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1e293b;
+            --muted-color: #64748b;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-color), #1d4ed8);
+            color: white;
+            margin-bottom: 2rem;
+            padding: 2rem 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            text-align: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn {
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            display: inline-block;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 0.55rem 1rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-muted {
+            background: #e2e8f0;
+            color: var(--text-color);
+        }
+
+        .btn-danger {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.35rem 0.65rem;
+        }
+
+        .layout {
+            display: grid;
+            gap: 1.5rem;
+            grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
+        }
+
+        .section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            padding: 1.25rem;
+        }
+
+        .section-title {
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.6rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        input,
+        select,
+        textarea {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font: inherit;
+            padding: 0.75rem;
+            width: 100%;
+        }
+
+        textarea {
+            min-height: 180px;
+            resize: vertical;
+        }
+
+        .form-row {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: 1fr 1fr 140px;
+            margin-bottom: 1rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .alert {
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            padding: 1rem;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            border: 1px solid #86efac;
+            color: var(--success-color);
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            border: 1px solid #fca5a5;
+            color: var(--error-color);
+        }
+
+        .rule-list {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .rule-item {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.85rem;
+        }
+
+        .rule-head {
+            align-items: center;
+            display: flex;
+            gap: 0.75rem;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .badge {
+            background: #eff6ff;
+            border-radius: 6px;
+            color: var(--primary-color);
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.2rem 0.45rem;
+        }
+
+        .muted {
+            color: var(--muted-color);
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #0f172a;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            overflow: auto;
+            padding: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .layout,
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div class="container">
+        <h1>Conventions</h1>
+        <div class="nav-buttons">
+            <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="/settings" class="btn btn-secondary">Settings</a>
+        </div>
+    </div>
+</header>
+
+<main class="container">
+    <div id="alert-container"></div>
+
+    <div class="layout">
+        <div>
+            <section class="section">
+                <h2 class="section-title">Learn From Text</h2>
+                <form onsubmit="learnConventions(event)">
+                    <label for="convention-text">Convention notes</label>
+                    <textarea id="convention-text" placeholder="Example: Do not use System.out.println. Use 4 spaces. Classes use PascalCase and methods use camelCase."></textarea>
+                    <div class="actions">
+                        <button type="submit" class="btn btn-primary">Learn Rules</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="section">
+                <h2 class="section-title">Forbidden Patterns</h2>
+                <form class="form-row" onsubmit="addPattern(event)">
+                    <input id="new-pattern" placeholder="System.out.println" required>
+                    <input id="new-description" placeholder="Use logger instead" required>
+                    <select id="new-severity">
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="INFO">INFO</option>
+                    </select>
+                    <button type="submit" class="btn btn-primary">Add Pattern</button>
+                </form>
+                <div id="forbidden-patterns" class="rule-list"></div>
+            </section>
+        </div>
+
+        <aside>
+            <section class="section">
+                <h2 class="section-title">Parsed Rules</h2>
+                <div class="rule-list">
+                    <div class="rule-item">
+                        <div class="rule-head"><strong>Import Order</strong></div>
+                        <div id="import-order" class="muted"></div>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-head"><strong>Naming Patterns</strong></div>
+                        <pre id="naming-patterns">{}</pre>
+                    </div>
+                    <div class="rule-item">
+                        <div class="rule-head"><strong>Formatting Rules</strong></div>
+                        <pre id="formatting-rules">{}</pre>
+                    </div>
+                </div>
+            </section>
+        </aside>
+    </div>
+</main>
+
+<script>
+    let conventions = {};
+
+    function showAlert(message, type) {
+        const container = document.getElementById('alert-container');
+        container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        setTimeout(() => container.innerHTML = '', 5000);
+    }
+
+    async function loadConventions() {
+        const response = await fetch('/api/conventions');
+        const data = await response.json();
+        if (!data.success) {
+            showAlert(data.message || 'Failed to load conventions', 'error');
+            return;
+        }
+        conventions = data.conventions || {};
+        renderConventions();
+    }
+
+    function renderConventions() {
+        document.getElementById('import-order').textContent =
+            (conventions.importOrder || []).join(' -> ') || 'No import order rules';
+        document.getElementById('naming-patterns').textContent =
+            JSON.stringify(conventions.namingPatterns || {}, null, 2);
+        document.getElementById('formatting-rules').textContent =
+            JSON.stringify(conventions.formattingRules || {}, null, 2);
+
+        const list = document.getElementById('forbidden-patterns');
+        const patterns = conventions.forbiddenPatterns || [];
+        if (patterns.length === 0) {
+            list.innerHTML = '<p class="muted">No forbidden patterns configured.</p>';
+            return;
+        }
+
+        list.innerHTML = patterns.map((pattern, index) => `
+            <div class="rule-item">
+                <div class="rule-head">
+                    <strong>${escapeHtml(pattern.pattern || '')}</strong>
+                    <span class="badge">${escapeHtml(pattern.severity || 'WARNING')}</span>
+                </div>
+                <p class="muted">${escapeHtml(pattern.description || '')}</p>
+                <div class="actions">
+                    <button class="btn btn-sm btn-muted" onclick="editPattern(${index})">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deletePattern(${index})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function learnConventions(event) {
+        event.preventDefault();
+        const text = document.getElementById('convention-text').value;
+        const response = await fetch('/api/conventions/learn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        const data = await response.json();
+        if (data.success) {
+            conventions = data.conventions;
+            renderConventions();
+            showAlert('Conventions learned and saved.', 'success');
+        } else {
+            showAlert(data.message || 'Failed to learn conventions', 'error');
+        }
+    }
+
+    async function addPattern(event) {
+        event.preventDefault();
+        const pattern = {
+            pattern: document.getElementById('new-pattern').value,
+            description: document.getElementById('new-description').value,
+            severity: document.getElementById('new-severity').value
+        };
+        await savePattern('/api/conventions/forbidden-patterns', 'POST', pattern);
+        event.target.reset();
+    }
+
+    async function editPattern(index) {
+        const current = conventions.forbiddenPatterns[index];
+        const pattern = prompt('Pattern', current.pattern || '');
+        if (pattern === null) return;
+        const description = prompt('Description', current.description || '');
+        if (description === null) return;
+        const severity = prompt('Severity: ERROR, WARNING, INFO', current.severity || 'WARNING');
+        if (severity === null) return;
+        await savePattern(`/api/conventions/forbidden-patterns/${index}`, 'PUT', { pattern, description, severity });
+    }
+
+    async function deletePattern(index) {
+        if (!confirm('Delete this pattern?')) return;
+        const response = await fetch(`/api/conventions/forbidden-patterns/${index}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) {
+            conventions = data.conventions;
+            renderConventions();
+            showAlert('Pattern deleted.', 'success');
+        } else {
+            showAlert(data.message || 'Failed to delete pattern', 'error');
+        }
+    }
+
+    async function savePattern(url, method, pattern) {
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pattern)
+        });
+        const data = await response.json();
+        if (data.success) {
+            conventions = data.conventions;
+            renderConventions();
+            showAlert('Pattern saved.', 'success');
+        } else {
+            showAlert(data.message || 'Failed to save pattern', 'error');
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    document.addEventListener('DOMContentLoaded', loadConventions);
+</script>
+</body>
+</html>

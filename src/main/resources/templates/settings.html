@@ -273,6 +273,7 @@
             <h1>⚙️ Settings</h1>
             <div class="nav-buttons">
                 <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+                <a href="/conventions" class="btn btn-secondary">Conventions</a>
             </div>
         </div>
     </header>
@@ -436,6 +437,35 @@
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </section>
+
+        <!-- AI Settings -->
+        <section class="section">
+            <h2 class="section-title">AI Review Settings</h2>
+            <form id="ai-settings-form" onsubmit="saveAiSettings(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ai-enabled">AI Review</label>
+                        <select id="ai-enabled" name="aiEnabled">
+                            <option value="false">Disabled</option>
+                            <option value="true">Enabled</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ollama-base-url">Ollama Base URL</label>
+                        <input type="text" id="ollama-base-url" name="ollamaBaseUrl" value="http://localhost:11434">
+                    </div>
+                    <div class="form-group">
+                        <label for="ollama-model">Ollama Model</label>
+                        <input type="text" id="ollama-model" name="ollamaModel" value="qwen2.5-coder:7b">
+                    </div>
+                    <div class="form-group">
+                        <label for="ollama-timeout">Timeout (seconds)</label>
+                        <input type="number" id="ollama-timeout" name="ollamaTimeoutSeconds" min="5" value="120">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save AI Settings</button>
             </form>
         </section>
     </main>
@@ -617,6 +647,35 @@
             } catch (error) {
                 console.error('Error saving settings:', error);
                 showAlert('Failed to save settings', 'error');
+            }
+        }
+
+        async function saveAiSettings(event) {
+            event.preventDefault();
+
+            const settings = {
+                aiEnabled: document.getElementById('ai-enabled').value === 'true',
+                ollamaBaseUrl: document.getElementById('ollama-base-url').value,
+                ollamaModel: document.getElementById('ollama-model').value,
+                ollamaTimeoutSeconds: parseInt(document.getElementById('ollama-timeout').value)
+            };
+
+            try {
+                const response = await fetch('/api/settings/general', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('AI settings saved successfully!', 'success');
+                } else {
+                    showAlert(data.message || 'Failed to save AI settings', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving AI settings:', error);
+                showAlert('Failed to save AI settings', 'error');
             }
         }
 

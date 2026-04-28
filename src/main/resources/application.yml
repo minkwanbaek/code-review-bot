@@ -63,6 +63,18 @@ reviewbot:
     auto-trigger: true
     fail-on-error: false
     min-severity: INFO  # Minimum severity to report (INFO, WARNING, ERROR)
+
+  # Learned convention storage
+  conventions:
+    file: ${REVIEWBOT_CONVENTIONS_FILE:./conventions.json}
+
+  # AI review configuration
+  ai:
+    enabled: ${REVIEWBOT_AI_ENABLED:false}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:qwen2.5-coder:7b}
+      timeout-seconds: ${OLLAMA_TIMEOUT_SECONDS:120}
   
   # Output configuration
   output:
