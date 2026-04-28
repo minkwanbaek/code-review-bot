@@ -1,0 +1,53 @@
+# US-5: Docker deployment
+# Docker Compose configuration for Code Review Bot
+
+version: '3.8'
+
+services:
+  reviewbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-review-bot
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount review reports directory
+      - ./reports:/app/reports
+      # Mount configuration (optional)
+      - ./config:/app/config:ro
+    environment:
+      # GitHub integration
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      
+      # Bitbucket integration
+      - BITBUCKET_USERNAME=${BITBUCKET_USERNAME:-}
+      - BITBUCKET_APP_PASSWORD=${BITBUCKET_APP_PASSWORD:-}
+      
+      # Scheduler configuration
+      - REVIEWBOT_POLL_INTERVAL_MS=${POLL_INTERVAL:-300000}
+      - REVIEWBOT_SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
+      
+      # Application settings
+      - SPRING_PROFILES_ACTIVE=docker
+      - SERVER_PORT=8080
+      
+      # Logging
+      - LOG_LEVEL_COM_REVIEWBOT=${LOG_LEVEL:-INFO}
+      
+      # Output settings
+      - REVIEWBOT_OUTPUT_DEFAULT_LANG=${DEFAULT_LANG:-ko}
+      - REVIEWBOT_OUTPUT_DEFAULT_FORMAT=${DEFAULT_FORMAT:-terminal}
+    networks:
+      - reviewbot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  reviewbot-network:
+    driver: bridge

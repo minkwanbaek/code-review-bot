@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: code-review-bot
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+
+# Actuator for health checks
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+reviewbot:
+  # Scheduler configuration
+  scheduler:
+    poll-interval-ms: ${REVIEWBOT_POLL_INTERVAL_MS:300000}  # 5 minutes default
+    enabled: ${REVIEWBOT_SCHEDULER_ENABLED:true}
+  
+  # Repository monitoring configuration
+  repos:
+    - provider: github
+      owner: ${GITHUB_OWNER:-}
+      repo: ${GITHUB_REPO:-}
+      branches:
+        - main
+        - develop
+    - provider: bitbucket
+      workspace: ${BITBUCKET_WORKSPACE:-}
+      repo: ${BITBUCKET_REPO:-}
+      branches:
+        - main
+  
+  # GitHub integration
+  github:
+    token: ${GITHUB_TOKEN:}
+    api-url: https://api.github.com
+  
+  # Bitbucket integration
+  bitbucket:
+    username: ${BITBUCKET_USERNAME:}
+    app-password: ${BITBUCKET_APP_PASSWORD:}
+    api-url: https://api.bitbucket.org/2.0
+  
+  # Review configuration
+  review:
+    auto-trigger: true
+    fail-on-error: false
+    min-severity: INFO  # Minimum severity to report (INFO, WARNING, ERROR)
+  
+  # Output configuration
+  output:
+    default-lang: ${REVIEWBOT_OUTPUT_DEFAULT_LANG:ko}
+    default-format: ${REVIEWBOT_OUTPUT_DEFAULT_FORMAT:terminal}
+    file-output-dir: ./reports
+
+logging:
+  level:
+    com.reviewbot: ${LOG_LEVEL_COM_REVIEWBOT:DEBUG}
+    org.springframework: INFO
+    org.apache.hc.client5: WARN
+
+---
+# Docker profile specific settings
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+server:
+  address: 0.0.0.0
+
+logging:
+  level:
+    com.reviewbot: INFO
+    org.springframework: WARN
