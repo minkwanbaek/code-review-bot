@@ -57,12 +57,18 @@ public class DashboardController {
         model.addAttribute("schedulerEnabled", schedulerEnabled);
         model.addAttribute("pollIntervalSeconds", pollIntervalMs / 1000);
         
-        // 샘플 PR 데이터 (실제로는 서비스에서 가져옴)
-        List<Map<String, Object>> recentPRs = getSamplePullRequests();
+        // 실제 API 연동 전까지 빈 데이터 반환
+        List<Map<String, Object>> recentPRs = new ArrayList<>();
         model.addAttribute("recentPRs", recentPRs);
         
-        // 리뷰 통계
-        Map<String, Object> stats = getReviewStats();
+        // 리뷰 통계 - 실제 연동 전까지 0 으로 초기화
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalReviews", 0);
+        stats.put("totalViolations", 0);
+        stats.put("averageViolationsPerPR", 0);
+        stats.put("passedPRs", 0);
+        stats.put("failedPRs", 0);
+        stats.put("passRate", "0%");
         model.addAttribute("stats", stats);
         
         return "index";
@@ -87,15 +93,8 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
+        // 실제 API 연동 전까지 빈 리스트 반환
         List<Map<String, Object>> prs = new ArrayList<>();
-        
-        if ("all".equals(provider) || "github".equals(provider)) {
-            prs.addAll(getSamplePullRequests());
-        }
-        
-        if ("all".equals(provider) || "bitbucket".equals(provider)) {
-            prs.addAll(getSampleBitbucketPullRequests());
-        }
         
         // 상태 필터링
         if (!"all".equals(status)) {
@@ -134,8 +133,8 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
-        // 샘플 리뷰 결과
-        List<Map<String, Object>> reviews = getSampleReviews();
+        // 실제 API 연동 전까지 빈 리스트 반환
+        List<Map<String, Object>> reviews = new ArrayList<>();
         
         if (prId != null && !prId.isEmpty()) {
             reviews.removeIf(r -> !prId.equals(String.valueOf(r.get("prId"))));
@@ -165,111 +164,13 @@ public class DashboardController {
         return status;
     }
 
-    /**
-     * 샘플 GitHub PR 데이터 생성
-     */
-    private List<Map<String, Object>> getSamplePullRequests() {
-        List<Map<String, Object>> prs = new ArrayList<>();
-        
-        Map<String, Object> pr1 = new HashMap<>();
-        pr1.put("id", 1);
-        pr1.put("number", 42);
-        pr1.put("title", "Feature: Add user authentication");
-        pr1.put("author", "developer1");
-        pr1.put("provider", "github");
-        pr1.put("repo", "owner/project-a");
-        pr1.put("state", "open");
-        pr1.put("createdAt", LocalDateTime.now().minusHours(2).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr1.put("updatedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr1.put("url", "https://github.com/owner/project-a/pull/42");
-        prs.add(pr1);
-        
-        Map<String, Object> pr2 = new HashMap<>();
-        pr2.put("id", 2);
-        pr2.put("number", 15);
-        pr2.put("title", "Fix: Resolve memory leak issue");
-        pr2.put("author", "developer2");
-        pr2.put("provider", "github");
-        pr2.put("repo", "owner/project-b");
-        pr2.put("state", "open");
-        pr2.put("createdAt", LocalDateTime.now().minusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr2.put("updatedAt", LocalDateTime.now().minusHours(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr2.put("url", "https://github.com/owner/project-b/pull/15");
-        prs.add(pr2);
-        
-        return prs;
-    }
 
-    /**
-     * 샘플 Bitbucket PR 데이터 생성
-     */
-    private List<Map<String, Object>> getSampleBitbucketPullRequests() {
-        List<Map<String, Object>> prs = new ArrayList<>();
-        
-        Map<String, Object> pr1 = new HashMap<>();
-        pr1.put("id", 3);
-        pr1.put("number", 8);
-        pr1.put("title", "Refactor: Improve code structure");
-        pr1.put("author", "dev3");
-        pr1.put("provider", "bitbucket");
-        pr1.put("repo", "workspace/project-c");
-        pr1.put("state", "open");
-        pr1.put("createdAt", LocalDateTime.now().minusHours(5).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr1.put("updatedAt", LocalDateTime.now().minusMinutes(30).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        pr1.put("url", "https://bitbucket.org/workspace/project-c/pull-requests/8");
-        prs.add(pr1);
-        
-        return prs;
-    }
 
-    /**
-     * 샘플 리뷰 데이터 생성
-     */
-    private List<Map<String, Object>> getSampleReviews() {
-        List<Map<String, Object>> reviews = new ArrayList<>();
-        
-        Map<String, Object> review1 = new HashMap<>();
-        review1.put("id", 1);
-        review1.put("prId", 1);
-        review1.put("prNumber", 42);
-        review1.put("repo", "owner/project-a");
-        review1.put("totalViolations", 5);
-        review1.put("errorCount", 1);
-        review1.put("warningCount", 3);
-        review1.put("infoCount", 1);
-        review1.put("status", "COMPLETED");
-        review1.put("reviewedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        reviews.add(review1);
-        
-        Map<String, Object> review2 = new HashMap<>();
-        review2.put("id", 2);
-        review2.put("prId", 2);
-        review2.put("prNumber", 15);
-        review2.put("repo", "owner/project-b");
-        review2.put("totalViolations", 0);
-        review2.put("errorCount", 0);
-        review2.put("warningCount", 0);
-        review2.put("infoCount", 0);
-        review2.put("status", "PASSED");
-        review2.put("reviewedAt", LocalDateTime.now().minusHours(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        reviews.add(review2);
-        
-        return reviews;
-    }
 
-    /**
-     * 리뷰 통계 생성
-     */
-    private Map<String, Object> getReviewStats() {
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("totalReviews", 127);
-        stats.put("totalViolations", 342);
-        stats.put("averageViolationsPerPR", 2.7);
-        stats.put("passedPRs", 89);
-        stats.put("failedPRs", 38);
-        stats.put("passRate", "70.1%");
-        return stats;
-    }
+
+
+
+
 
     /**
      * 가동 시간 계산
@@ -290,21 +191,10 @@ public class DashboardController {
      */
     @GetMapping("/pr/{id}")
     public String getPRDetail(@PathVariable Long id, Model model) {
-        // 샘플 PR 데이터 (실제로는 서비스에서 가져옴)
-        Map<String, Object> pr = getSamplePullRequests().stream()
-                .filter(p -> p.get("id").equals(id))
-                .findFirst()
-                .orElse(getSampleBitbucketPullRequests().stream()
-                        .filter(p -> p.get("id").equals(id))
-                        .findFirst()
-                        .orElse(null));
-        
-        if (pr == null) {
-            return "redirect:/";
-        }
-        
-        model.addAttribute("pr", pr);
-        return "pr-detail";
+        // 실제 API 연동 전까지 빈 페이지 반환
+        // TODO: 실제 PR 데이터 조회 로직 구현
+        log.warn("PR detail requested for id={}, but no data available yet", id);
+        return "redirect:/";
     }
 
     /**
@@ -320,9 +210,10 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
-        // 샘플 Diff 데이터 생성
-        StructuredDiff diff = createSampleDiff();
-        response.put("diff", convertDiffToMap(diff));
+        // 실제 API 연동 전까지 빈 diff 반환
+        Map<String, Object> emptyDiff = new HashMap<>();
+        emptyDiff.put("files", new ArrayList<>());
+        response.put("diff", emptyDiff);
         
         return response;
     }
@@ -340,9 +231,15 @@ public class DashboardController {
         response.put("success", true);
         response.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         
-        // 샘플 리뷰 결과
-        ReviewResult review = createSampleReview();
-        response.put("review", convertReviewToMap(review));
+        // 실제 API 연동 전까지 빈 리뷰 결과 반환
+        Map<String, Object> emptyReview = new HashMap<>();
+        emptyReview.put("fileReviews", new ArrayList<>());
+        emptyReview.put("totalViolations", 0);
+        emptyReview.put("errorCount", 0);
+        emptyReview.put("warningCount", 0);
+        emptyReview.put("infoCount", 0);
+        emptyReview.put("status", "PASSED");
+        response.put("review", emptyReview);
         
         return response;
     }
@@ -544,8 +441,8 @@ public class DashboardController {
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         
-        // 샘플 히스토리 데이터 생성
-        List<Map<String, Object>> allHistory = getSampleHistory();
+        // 실제 API 연동 전까지 빈 리스트 반환
+        List<Map<String, Object>> allHistory = new ArrayList<>();
         
         // 필터링
         if (repo != null && !repo.isEmpty()) {
@@ -593,46 +490,12 @@ public class DashboardController {
     @GetMapping("/api/history/{id}/download")
     @ResponseBody
     public byte[] downloadReviewReport(@PathVariable Long id) {
-        // 샘플 마크다운 리포트 생성
-        String markdown = "# Code Review Report\n\n" +
-                         "## PR #42\n\n" +
-                         "### Summary\n" +
-                         "- Total Violations: 5\n" +
-                         "- Errors: 1\n" +
-                         "- Warnings: 3\n" +
-                         "- Info: 1\n\n" +
-                         "### Details\n\n" +
-                         "#### src/main/java/Example.java\n" +
-                         "1. [ERROR] Line 42: Missing null check\n" +
-                         "2. [WARNING] Line 15: Unused import\n" +
-                         "3. [INFO] Line 28: Consider using StringBuilder\n";
-        
-        return markdown.getBytes();
+        // 실제 API 연동 전까지 404 반환
+        log.warn("Download requested for review id={}, but no data available yet", id);
+        return null; // Spring 이 404 처리
     }
 
-    /**
-     * 샘플 히스토리 데이터 생성
-     */
-    private List<Map<String, Object>> getSampleHistory() {
-        List<Map<String, Object>> history = new ArrayList<>();
-        
-        for (int i = 1; i <= 25; i++) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("id", (long) i);
-            item.put("prId", (long) (i % 5 + 1));
-            item.put("prNumber", 40 + i);
-            item.put("repo", i % 3 == 0 ? "owner/project-a" : "owner/project-b");
-            item.put("errorCount", i % 4);
-            item.put("warningCount", i % 3);
-            item.put("infoCount", i % 2);
-            item.put("totalViolations", (i % 4) + (i % 3) + (i % 2));
-            item.put("status", i % 5 == 0 ? "PASSED" : "COMPLETED");
-            item.put("reviewedAt", LocalDateTime.now().minusDays(i).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            history.add(item);
-        }
-        
-        return history;
-    }
+
 
     /**
      * 히스토리 통계 생성
@@ -656,43 +519,9 @@ public class DashboardController {
         return stats;
     }
 
-    /**
-     * 샘플 Diff 데이터 생성
-     */
-    private StructuredDiff createSampleDiff() {
-        StructuredDiff diff = new StructuredDiff();
-        
-        FileDiff fileDiff = new FileDiff("src/main/java/Example.java", "src/main/java/Example.java");
-        
-        Hunk hunk1 = new Hunk(10, 10, "@@ -10,5 +10,7 @@");
-        hunk1.addChange(new Change(ChangeType.CONTEXT, 10, 10, "public class Example {"));
-        hunk1.addChange(new Change(ChangeType.CONTEXT, 11, 11, "    private String name;"));
-        hunk1.addChange(new Change(ChangeType.ADDITION, 12, -1, "    private int age;"));
-        hunk1.addChange(new Change(ChangeType.DELETION, 13, 12, "    // TODO: Add validation"));
-        hunk1.addChange(new Change(ChangeType.CONTEXT, 14, 13, "}"));
-        
-        fileDiff.addHunk(hunk1);
-        diff.addFile(fileDiff);
-        
-        return diff;
-    }
 
-    /**
-     * 샘플 리뷰 결과 생성
-     */
-    private ReviewResult createSampleReview() {
-        ReviewResult result = new ReviewResult();
-        
-        FileReview fileReview = new FileReview("src/main/java/Example.java");
-        fileReview.addViolation(new Violation(Severity.ERROR, "NullCheck", "Missing null check for parameter", 15));
-        fileReview.addViolation(new Violation(Severity.WARNING, "UnusedImport", "Unused import statement", 3));
-        fileReview.addViolation(new Violation(Severity.WARNING, "CodeStyle", "Line too long (>120 characters)", 28));
-        fileReview.addViolation(new Violation(Severity.INFO, "Performance", "Consider using StringBuilder for concatenation", 42));
-        
-        result.addFileReview(fileReview);
-        
-        return result;
-    }
+
+
 
     /**
      * Diff 를 Map 으로 변환

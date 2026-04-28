@@ -485,19 +485,19 @@
         <!-- Statistics -->
         <section class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value" th:text="${stats.totalReviews}">127</div>
+                <div class="stat-value" th:text="${stats.totalReviews}">0</div>
                 <div class="stat-label">Total Reviews</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" th:text="${stats.totalViolations}">342</div>
+                <div class="stat-value" th:text="${stats.totalViolations}">0</div>
                 <div class="stat-label">Total Violations</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" th:text="${stats.passRate}">70.1%</div>
+                <div class="stat-value" th:text="${stats.passRate}">0%</div>
                 <div class="stat-label">Pass Rate</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" th:text="${stats.averageViolationsPerPR}">2.7</div>
+                <div class="stat-value" th:text="${stats.averageViolationsPerPR}">0</div>
                 <div class="stat-label">Avg Violations/PR</div>
             </div>
         </section>
@@ -540,7 +540,12 @@
                     </tr>
                 </thead>
                 <tbody id="pr-table-body">
-                    <tr th:each="pr : ${recentPRs}">
+                    <tr th:if="${#lists.isEmpty(recentPRs)}">
+                        <td colspan="8" style="text-align:center;color:#64748b;padding:2rem;">
+                            등록된 PR 이 없습니다. 설정 페이지에서 repo 를 추가하세요.
+                        </td>
+                    </tr>
+                    <tr th:each="pr : ${recentPRs}" th:if="${!#lists.isEmpty(recentPRs)}">
                         <td>
                             <span class="provider-badge" 
                                   th:classappend="${pr.provider == 'github'} ? 'provider-github' : (${pr.provider == 'bitbucket'} ? 'provider-bitbucket' : 'provider-bitbucket-server')">
@@ -556,7 +561,8 @@
                                   th:classappend="${pr.state == 'open'} ? 'badge-open' : 'badge-closed'"
                                   th:text="${pr.state}">open</span>
                         </td>
-                        <td th:text="${#strings.substring(pr.updatedAt, 0, 16).replace('T', ' ')}">2024-01-01 12:00</td>
+                        <td th:if="${pr.updatedAt != null}" th:text="${#strings.substring(pr.updatedAt, 0, 16).replace('T', ' ')}">2024-01-01 12:00</td>
+                        <td th:unless="${pr.updatedAt != null}"></td>
                         <td>
                             <a th:href="@{'/pr/' + ${pr.id}}" class="btn btn-primary btn-sm">View</a>
                         </td>
@@ -566,7 +572,10 @@
             
             <!-- Mobile Card View -->
             <div class="pr-cards" id="pr-cards">
-                <div class="pr-card" th:each="pr : ${recentPRs}">
+                <div th:if="${#lists.isEmpty(recentPRs)}" style="text-align:center;color:#64748b;padding:2rem;">
+                    등록된 PR 이 없습니다. 설정 페이지에서 repo 를 추가하세요.
+                </div>
+                <div class="pr-card" th:each="pr : ${recentPRs}" th:if="${!#lists.isEmpty(recentPRs)}">
                     <div class="pr-card-header">
                         <span class="pr-card-title" th:text="${pr.title}">Feature: Add user authentication</span>
                         <span class="badge" 
