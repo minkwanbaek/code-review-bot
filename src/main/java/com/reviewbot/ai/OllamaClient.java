@@ -20,6 +20,7 @@ import org.springframework.web.client.RestTemplate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -54,7 +55,7 @@ public class OllamaClient {
     @Autowired
     public OllamaClient(
             @Value("${reviewbot.ai.ollama.base-url:http://localhost:11434}") String baseUrl,
-            @Value("${reviewbot.ai.ollama.model:qwen2.5-coder:7b}") String model,
+            @Value("${reviewbot.ai.ollama.model:deepseek-coder:1.3b}") String model,
             @Value("${reviewbot.ai.ollama.timeout-seconds:120}") int timeoutSeconds,
             RestTemplateBuilder restTemplateBuilder) {
         this.baseUrl = baseUrl;
@@ -183,33 +184,62 @@ public class OllamaClient {
      */
     private String buildAnalyzeConventionsPrompt(String text) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Analyze the following text and extract code conventions, architecture rules, and forbidden patterns.\n\n");
+        sb.append("Analyze the following guide text and extract code conventions into strict JSON only.\n");
+        sb.append("Do not include markdown fences, explanations, or comments.\n\n");
         sb.append("## Input Text:\n");
         sb.append(text).append("\n\n");
         
         sb.append("## Output Format:\n");
-        sb.append("Return a JSON object with the following structure:\n");
+        sb.append("Return exactly one JSON object with this structure:\n");
         sb.append("{\n");
-        sb.append("  \"importOrder\": [\"java\", \"javax\", \"org\", \"com\"],\n");
-        sb.append("  \"namingPatterns\": {\n");
+        sb.append("  \"importRules\": [\n");
+        sb.append("    {\n");
+        sb.append("      \"order\": [\"java\", \"javax\", \"org\", \"com\"],\n");
+        sb.append("      \"forbiddenImports\": [\"java.util.*\"],\n");
+        sb.append("      \"message\": \"Use explicit imports\"\n");
+        sb.append("    }\n");
+        sb.append("  ],\n");
+        sb.append("  \"namingRules\": {\n");
         sb.append("    \"class\": \"PascalCase\",\n");
         sb.append("    \"method\": \"camelCase\",\n");
-        sb.append("    \"variable\": \"camelCase\"\n");
+        sb.append("    \"variable\": \"camelCase\",\n");
+        sb.append("    \"constant\": \"UPPER_SNAKE_CASE\",\n");
+        sb.append("    \"package\": \"lowercase\"\n");
         sb.append("  },\n");
+        sb.append("  \"importOrder\": [\"java\", \"javax\", \"org\", \"com\"],\n");
+        sb.append("  \"namingPatterns\": {\"class\": \"PascalCase\", \"method\": \"camelCase\", \"variable\": \"camelCase\"},\n");
         sb.append("  \"formattingRules\": {\n");
-        sb.append("    \"indentation\": 4,\n");
+        sb.append("    \"indentSpaces\": 4,\n");
         sb.append("    \"maxLineLength\": 120,\n");
-        sb.append("    \"braceStyle\": \"K&R\"\n");
+        sb.append("    \"braceStyle\": \"sameLine\"\n");
         sb.append("  },\n");
         sb.append("  \"forbiddenPatterns\": [\n");
         sb.append("    {\n");
         sb.append("      \"pattern\": \"System.out.println\",\n");
         sb.append("      \"description\": \"Do not use print statements for logging\",\n");
+        sb.append("      \"message\": \"Use a logger instead\",\n");
         sb.append("      \"severity\": \"WARNING\"\n");
+        sb.append("    }\n");
+        sb.append("  ],\n");
+        sb.append("  \"archRules\": [\n");
+        sb.append("    {\n");
+        sb.append("      \"fromLayer\": \"controller\",\n");
+        sb.append("      \"toLayer\": \"repository\",\n");
+        sb.append("      \"allowed\": false,\n");
+        sb.append("      \"severity\": \"ERROR\",\n");
+        sb.append("      \"message\": \"Controllers must not depend on repositories directly\"\n");
+        sb.append("    }\n");
+        sb.append("  ],\n");
+        sb.append("  \"dependencyRules\": [\n");
+        sb.append("    {\n");
+        sb.append("      \"layer\": \"controller\",\n");
+        sb.append("      \"forbiddenDependencies\": [\"repository\"],\n");
+        sb.append("      \"severity\": \"ERROR\",\n");
+        sb.append("      \"message\": \"Controllers may depend only on services\"\n");
         sb.append("    }\n");
         sb.append("  ]\n");
         sb.append("}\n\n");
-        sb.append("Extract as many rules as possible from the input text. If a section is not mentioned, use reasonable defaults.\n");
+        sb.append("Use empty arrays or objects for sections that are not present. Do not invent rules.\n");
         
         return sb.toString();
     }
@@ -302,19 +332,40 @@ public class OllamaClient {
             }
             
             JsonNode rootNode = objectMapper.readTree(jsonContent);
+
+            if (rootNode.has("importRules") && rootNode.get("importRules").isArray()) {
+                List<Conventions.ImportRule> importRules = new ArrayList<>();
+                for (JsonNode node : rootNode.get("importRules")) {
+                    Conventions.ImportRule rule = new Conventions.ImportRule();
+                    rule.setOrder(readStringList(node.get("order")));
+                    rule.setForbiddenImports(readStringList(node.get("forbiddenImports")));
+                    rule.setMessage(readText(node, "message", ""));
+                    importRules.add(rule);
+                }
+                conventions.setImportRules(importRules);
+            }
             
             // Import order
             if (rootNode.has("importOrder") && rootNode.get("importOrder").isArray()) {
-                List<String> importOrder = new ArrayList<>();
-                for (JsonNode node : rootNode.get("importOrder")) {
-                    importOrder.add(node.asText());
+                conventions.setImportOrder(readStringList(rootNode.get("importOrder")));
+            } else if (!conventions.getImportRules().isEmpty()) {
+                conventions.setImportOrder(conventions.getImportRules().get(0).getOrder());
+            }
+
+            if (rootNode.has("namingRules") && rootNode.get("namingRules").isObject()) {
+                Map<String, String> namingRules = new LinkedHashMap<>();
+                JsonNode namingNode = rootNode.get("namingRules");
+                for (String field : new String[]{"class", "method", "variable", "constant", "package"}) {
+                    if (namingNode.has(field)) {
+                        namingRules.put(field, namingNode.get(field).asText());
+                    }
                 }
-                conventions.setImportOrder(importOrder);
+                conventions.setNamingRules(namingRules);
             }
             
             // Naming patterns
             if (rootNode.has("namingPatterns") && rootNode.get("namingPatterns").isObject()) {
-                Map<String, Object> namingPatterns = new HashMap<>();
+                Map<String, Object> namingPatterns = new LinkedHashMap<>();
                 JsonNode namingNode = rootNode.get("namingPatterns");
                 for (String field : new String[]{"class", "method", "variable", "constant", "package"}) {
                     if (namingNode.has(field)) {
@@ -322,16 +373,19 @@ public class OllamaClient {
                     }
                 }
                 conventions.setNamingPatterns(namingPatterns);
+            } else if (!conventions.getNamingRules().isEmpty()) {
+                conventions.setNamingPatterns(new LinkedHashMap<>(conventions.getNamingRules()));
             }
             
             // Formatting rules
             if (rootNode.has("formattingRules") && rootNode.get("formattingRules").isObject()) {
-                Map<String, Object> formattingRules = new HashMap<>();
+                Map<String, Object> formattingRules = new LinkedHashMap<>();
                 JsonNode formattingNode = rootNode.get("formattingRules");
-                for (String field : new String[]{"indentation", "maxLineLength", "braceStyle", "lineEndings"}) {
+                for (String field : new String[]{"indentSpaces", "indentation", "maxLineLength", "braceStyle", "lineEndings"}) {
                     if (formattingNode.has(field)) {
                         if (formattingNode.get(field).isNumber()) {
-                            formattingRules.put(field, formattingNode.get(field).asInt());
+                            String key = "indentation".equals(field) ? "indentSpaces" : field;
+                            formattingRules.put(key, formattingNode.get(field).asInt());
                         } else {
                             formattingRules.put(field, formattingNode.get(field).asText());
                         }
@@ -346,10 +400,41 @@ public class OllamaClient {
                 for (JsonNode node : rootNode.get("forbiddenPatterns")) {
                     String pattern = node.has("pattern") ? node.get("pattern").asText() : "";
                     String description = node.has("description") ? node.get("description").asText() : "";
+                    String message = node.has("message") ? node.get("message").asText() : description;
                     String severity = node.has("severity") ? node.get("severity").asText() : "WARNING";
-                    forbiddenPatterns.add(new Conventions.ForbiddenPattern(pattern, description, severity));
+                    Conventions.ForbiddenPattern forbiddenPattern =
+                            new Conventions.ForbiddenPattern(pattern, description, severity);
+                    forbiddenPattern.setMessage(message);
+                    forbiddenPatterns.add(forbiddenPattern);
                 }
                 conventions.setForbiddenPatterns(forbiddenPatterns);
+            }
+
+            if (rootNode.has("archRules") && rootNode.get("archRules").isArray()) {
+                List<Conventions.ArchRule> archRules = new ArrayList<>();
+                for (JsonNode node : rootNode.get("archRules")) {
+                    Conventions.ArchRule rule = new Conventions.ArchRule();
+                    rule.setFromLayer(readText(node, "fromLayer", readText(node, "sourceLayer", "")));
+                    rule.setToLayer(readText(node, "toLayer", readText(node, "targetLayer", "")));
+                    rule.setAllowed(!node.has("allowed") || node.get("allowed").asBoolean());
+                    rule.setSeverity(readText(node, "severity", "ERROR"));
+                    rule.setMessage(readText(node, "message", ""));
+                    archRules.add(rule);
+                }
+                conventions.setArchRules(archRules);
+            }
+
+            if (rootNode.has("dependencyRules") && rootNode.get("dependencyRules").isArray()) {
+                List<Conventions.DependencyRule> dependencyRules = new ArrayList<>();
+                for (JsonNode node : rootNode.get("dependencyRules")) {
+                    Conventions.DependencyRule rule = new Conventions.DependencyRule();
+                    rule.setLayer(readText(node, "layer", ""));
+                    rule.setForbiddenDependencies(readStringList(node.get("forbiddenDependencies")));
+                    rule.setSeverity(readText(node, "severity", "ERROR"));
+                    rule.setMessage(readText(node, "message", ""));
+                    dependencyRules.add(rule);
+                }
+                conventions.setDependencyRules(dependencyRules);
             }
             
         } catch (Exception e) {
@@ -357,6 +442,23 @@ public class OllamaClient {
         }
         
         return conventions;
+    }
+
+    private List<String> readStringList(JsonNode node) {
+        List<String> values = new ArrayList<>();
+        if (node != null && node.isArray()) {
+            for (JsonNode item : node) {
+                values.add(item.asText());
+            }
+        }
+        return values;
+    }
+
+    private String readText(JsonNode node, String field, String fallback) {
+        if (node != null && node.has(field) && !node.get(field).isNull()) {
+            return node.get(field).asText();
+        }
+        return fallback;
     }
 
     /**

@@ -86,8 +86,20 @@ public class ConventionService {
      * @throws IOException when conventions cannot be loaded or saved
      */
     public Conventions learnFromText(String text) throws IOException {
+        return learnFromText(text, aiEnabled);
+    }
+
+    /**
+     * Learns conventions from user supplied text and persists the merged result.
+     *
+     * @param text convention text
+     * @param requestAiEnabled whether this request should attempt AI learning
+     * @return saved conventions after learning
+     * @throws IOException when conventions cannot be loaded or saved
+     */
+    public Conventions learnFromText(String text, boolean requestAiEnabled) throws IOException {
         Conventions learned = null;
-        if (aiEnabled) {
+        if (requestAiEnabled) {
             learned = ollamaClient.analyzeConventions(text);
         }
         if (isEmpty(learned)) {
@@ -151,22 +163,34 @@ public class ConventionService {
         String lower = source.toLowerCase(Locale.ROOT);
 
         if (lower.contains("import")) {
-            conventions.setImportOrder(extractImportOrder(source));
+            List<String> importOrder = extractImportOrder(source);
+            conventions.setImportOrder(importOrder);
+            conventions.setImportRules(List.of(new Conventions.ImportRule(
+                    importOrder,
+                    extractForbiddenImports(source),
+                    "Import conventions from guide text")));
         }
 
-        Map<String, Object> naming = new LinkedHashMap<>();
+        Map<String, String> namingRules = new LinkedHashMap<>();
         if (lower.contains("pascal")) {
-            naming.put("class", "PascalCase");
+            namingRules.put("class", "PascalCase");
         }
         if (lower.contains("camel")) {
-            naming.put("method", "camelCase");
-            naming.put("variable", "camelCase");
+            namingRules.put("method", "camelCase");
+            namingRules.put("variable", "camelCase");
         }
         if (lower.contains("snake")) {
-            naming.put("variable", "snake_case");
+            namingRules.put("variable", "snake_case");
         }
-        if (!naming.isEmpty()) {
-            conventions.setNamingPatterns(naming);
+        if (lower.contains("upper") && lower.contains("snake")) {
+            namingRules.put("constant", "UPPER_SNAKE_CASE");
+        }
+        if (lower.contains("package") && (lower.contains("lower") || lower.contains("소문자"))) {
+            namingRules.put("package", "lowercase");
+        }
+        if (!namingRules.isEmpty()) {
+            conventions.setNamingRules(namingRules);
+            conventions.setNamingPatterns(new LinkedHashMap<>(namingRules));
         }
 
         Map<String, Object> formatting = new LinkedHashMap<>();
@@ -186,6 +210,8 @@ public class ConventionService {
         }
 
         conventions.setForbiddenPatterns(extractForbiddenPatterns(source));
+        conventions.setArchRules(extractArchRules(source));
+        conventions.setDependencyRules(extractDependencyRules(source));
         return conventions;
     }
 
@@ -197,6 +223,22 @@ public class ConventionService {
             }
         }
         return order;
+    }
+
+    private List<String> extractForbiddenImports(String text) {
+        List<String> forbiddenImports = new ArrayList<>();
+        String[] lines = text.split("\\R");
+        for (String line : lines) {
+            String lower = line.toLowerCase(Locale.ROOT);
+            if (lower.contains("import") && (lower.contains("forbid") || lower.contains("do not")
+                    || lower.contains("avoid") || lower.contains("금지"))) {
+                String pattern = inferPattern(line);
+                if (!pattern.isBlank()) {
+                    forbiddenImports.add(pattern);
+                }
+            }
+        }
+        return forbiddenImports;
     }
 
     private List<Conventions.ForbiddenPattern> extractForbiddenPatterns(String text) {
@@ -212,6 +254,37 @@ public class ConventionService {
             }
         }
         return patterns;
+    }
+
+    private List<Conventions.ArchRule> extractArchRules(String text) {
+        List<Conventions.ArchRule> rules = new ArrayList<>();
+        String lower = text.toLowerCase(Locale.ROOT);
+        if ((lower.contains("controller") && lower.contains("repository"))
+                && (lower.contains("forbid") || lower.contains("do not") || lower.contains("must not")
+                || lower.contains("forbidden") || lower.contains("금지"))) {
+            rules.add(new Conventions.ArchRule(
+                    "controller",
+                    "repository",
+                    false,
+                    "ERROR",
+                    "Controllers must not depend on repositories directly"));
+        }
+        return rules;
+    }
+
+    private List<Conventions.DependencyRule> extractDependencyRules(String text) {
+        List<Conventions.DependencyRule> rules = new ArrayList<>();
+        String lower = text.toLowerCase(Locale.ROOT);
+        if ((lower.contains("controller") && lower.contains("repository"))
+                && (lower.contains("forbid") || lower.contains("do not") || lower.contains("must not")
+                || lower.contains("forbidden") || lower.contains("금지"))) {
+            rules.add(new Conventions.DependencyRule(
+                    "controller",
+                    List.of("repository"),
+                    "ERROR",
+                    "Controllers may depend only on services"));
+        }
+        return rules;
     }
 
     private String inferPattern(String line) {
@@ -242,6 +315,12 @@ public class ConventionService {
         if (source.getImportOrder() != null && !source.getImportOrder().isEmpty()) {
             target.setImportOrder(source.getImportOrder());
         }
+        if (source.getImportRules() != null && !source.getImportRules().isEmpty()) {
+            target.setImportRules(source.getImportRules());
+        }
+        if (source.getNamingRules() != null && !source.getNamingRules().isEmpty()) {
+            target.getNamingRules().putAll(source.getNamingRules());
+        }
         if (source.getNamingPatterns() != null && !source.getNamingPatterns().isEmpty()) {
             target.getNamingPatterns().putAll(source.getNamingPatterns());
         }
@@ -254,14 +333,24 @@ public class ConventionService {
         if (source.getForbiddenPatterns() != null && !source.getForbiddenPatterns().isEmpty()) {
             target.setForbiddenPatterns(source.getForbiddenPatterns());
         }
+        if (source.getArchRules() != null && !source.getArchRules().isEmpty()) {
+            target.setArchRules(source.getArchRules());
+        }
+        if (source.getDependencyRules() != null && !source.getDependencyRules().isEmpty()) {
+            target.setDependencyRules(source.getDependencyRules());
+        }
     }
 
     private boolean isEmpty(Conventions conventions) {
         return conventions == null
                 || ((conventions.getImportOrder() == null || conventions.getImportOrder().isEmpty())
+                && (conventions.getImportRules() == null || conventions.getImportRules().isEmpty())
+                && (conventions.getNamingRules() == null || conventions.getNamingRules().isEmpty())
                 && (conventions.getNamingPatterns() == null || conventions.getNamingPatterns().isEmpty())
                 && (conventions.getFormattingRules() == null || conventions.getFormattingRules().isEmpty())
                 && (conventions.getCommonPatterns() == null || conventions.getCommonPatterns().isEmpty())
-                && (conventions.getForbiddenPatterns() == null || conventions.getForbiddenPatterns().isEmpty()));
+                && (conventions.getForbiddenPatterns() == null || conventions.getForbiddenPatterns().isEmpty())
+                && (conventions.getArchRules() == null || conventions.getArchRules().isEmpty())
+                && (conventions.getDependencyRules() == null || conventions.getDependencyRules().isEmpty()));
     }
 }

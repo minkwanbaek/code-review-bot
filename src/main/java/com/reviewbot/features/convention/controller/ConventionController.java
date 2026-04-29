@@ -74,7 +74,7 @@ public class ConventionController {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("Convention text is required");
         }
-        return success(conventionService.learnFromText(text));
+        return success(conventionService.learnFromText(text, Boolean.TRUE.equals(request.getAiEnabled())));
     }
 
     /**

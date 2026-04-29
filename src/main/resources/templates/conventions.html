@@ -294,7 +294,7 @@
             showAlert(data.message || 'Failed to load conventions', 'error');
             return;
         }
-        conventions = data.conventions || {};
+        conventions = data.data?.conventions || data.conventions || {};
         renderConventions();
     }
 
@@ -338,7 +338,7 @@
         });
         const data = await response.json();
         if (data.success) {
-            conventions = data.conventions;
+            conventions = data.data?.conventions || data.conventions;
             renderConventions();
             showAlert('Conventions learned and saved.', 'success');
         } else {
@@ -373,7 +373,7 @@
         const response = await fetch(`/api/conventions/forbidden-patterns/${index}`, { method: 'DELETE' });
         const data = await response.json();
         if (data.success) {
-            conventions = data.conventions;
+            conventions = data.data?.conventions || data.conventions;
             renderConventions();
             showAlert('Pattern deleted.', 'success');
         } else {
@@ -389,7 +389,7 @@
         });
         const data = await response.json();
         if (data.success) {
-            conventions = data.conventions;
+            conventions = data.data?.conventions || data.conventions;
             renderConventions();
             showAlert('Pattern saved.', 'success');
         } else {
