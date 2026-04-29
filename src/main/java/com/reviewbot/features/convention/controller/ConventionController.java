@@ -78,6 +78,23 @@ public class ConventionController {
     }
 
     /**
+     * Learns conventions from free-form text using Ollama regardless of global AI settings.
+     *
+     * @param request JSON body with text field
+     * @return response containing updated conventions
+     * @throws IOException when conventions cannot be loaded or saved
+     */
+    @PostMapping("/api/conventions/learn/ai")
+    @ResponseBody
+    public ApiResponse<ConventionResponse> learnConventionsWithAi(@RequestBody LearnConventionsRequest request) throws IOException {
+        String text = request == null ? "" : request.getText();
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("Convention text is required");
+        }
+        return success(conventionService.learnFromText(text, true));
+    }
+
+    /**
      * Saves the full convention document.
      *
      * @param conventions conventions to persist
