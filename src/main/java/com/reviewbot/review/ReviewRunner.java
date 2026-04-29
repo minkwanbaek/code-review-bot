@@ -10,8 +10,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * US-3: Review runner
@@ -20,6 +18,9 @@ import java.util.regex.Pattern;
 public class ReviewRunner {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final LayerChecker layerChecker = new LayerChecker();
+    private final ImportChecker importChecker = new ImportChecker();
+    private final NamingChecker namingChecker = new NamingChecker();
 
     /**
      * Diff 와 conventions 를 기반으로 리뷰 수행
@@ -33,6 +34,9 @@ public class ReviewRunner {
         
         for (FileDiff file : diff.getFiles()) {
             FileReview fileReview = new FileReview(file.getNewPath());
+            addViolations(fileReview, layerChecker.check(file, conventions));
+            addViolations(fileReview, importChecker.check(file, conventions));
+            addViolations(fileReview, namingChecker.check(file, conventions));
             int currentLineNumber = 0;
             
             for (Hunk hunk : file.getHunks()) {
@@ -44,10 +48,7 @@ public class ReviewRunner {
                     
                     if (change.getType() == ChangeType.ADDITION) {
                         List<Violation> violations = checkViolations(change, conventions, currentLineNumber);
-                        for (Violation violation : violations) {
-                            violation.setLineNumber(currentLineNumber);
-                            fileReview.addViolation(violation);
-                        }
+                        addViolations(fileReview, violations);
                     }
                 }
             }
@@ -58,6 +59,12 @@ public class ReviewRunner {
         }
         
         return result;
+    }
+
+    private void addViolations(FileReview fileReview, List<Violation> violations) {
+        for (Violation violation : violations) {
+            fileReview.addViolation(violation);
+        }
     }
 
     /**
@@ -72,20 +79,6 @@ public class ReviewRunner {
         List<Violation> violations = new ArrayList<>();
         String content = change.getContent();
         
-        // Import 순서 위반 체크
-        if (content.startsWith("import ")) {
-            Violation importViolation = checkImportOrder(content, conventions, lineNumber);
-            if (importViolation != null) {
-                violations.add(importViolation);
-            }
-        }
-        
-        // 네이밍 패턴 위반 체크
-        Violation namingViolation = checkNamingPattern(content, conventions, lineNumber);
-        if (namingViolation != null) {
-            violations.add(namingViolation);
-        }
-        
         // 포맷팅 규칙 위반 체크
         Violation formattingViolation = checkFormattingRule(content, conventions, lineNumber);
         if (formattingViolation != null) {
@@ -99,121 +92,6 @@ public class ReviewRunner {
         }
         
         return violations;
-    }
-
-    /**
-     * Import 순서 위반 체크
-     * 
-     * @param importLine import 문장
-     * @param conventions 컨벤션 정보
-     * @param lineNumber 라인번호
-     * @return 위반 항목 (없으면 null)
-     */
-    private Violation checkImportOrder(String importLine, Conventions conventions, int lineNumber) {
-        List<String> importOrder = conventions.getImportOrder();
-        if (importOrder.isEmpty()) return null;
-        
-        // 실제 구현에서는 import 그룹 순서를 추적해야 함
-        // 여기서는 간단한 예시만 구현
-        String packageName = extractPackageName(importLine);
-        if (packageName == null) return null;
-        
-        // Java 표준 import 는 java. 로 시작해야 함
-        if (packageName.startsWith("java.") || packageName.startsWith("javax.")) {
-            return null; // 정상
-        }
-        
-        // org.springframework 등 프레임워크 import
-        if (packageName.startsWith("org.")) {
-            return null; // 정상
-        }
-        
-        // 커스텀 패키지 - 추가 검증 로직 필요
-        return null;
-    }
-    
-    /**
-     * Import 문장에서 패키지명 추출
-     */
-    private String extractPackageName(String importLine) {
-        Pattern pattern = Pattern.compile("import\\s+([\\w.]+);");
-        Matcher matcher = pattern.matcher(importLine);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return null;
-    }
-
-    /**
-     * 네이밍 패턴 위반 체크
-     * 
-     * @param content 코드 내용
-     * @param conventions 컨벤션 정보
-     * @param lineNumber 라인번호
-     * @return 위반 항목 (없으면 null)
-     */
-    @SuppressWarnings("unchecked")
-    private Violation checkNamingPattern(String content, Conventions conventions, int lineNumber) {
-        Map<String, Object> namingPatterns = conventions.getNamingPatterns();
-        String style = (String) namingPatterns.getOrDefault("namingStyle", "camelCase");
-        
-        // Class/Interface/Enum 선언 체크
-        Pattern classPattern = Pattern.compile("\\b(class|interface|enum)\\s+([A-Za-z0-9_]+)");
-        Matcher classMatcher = classPattern.matcher(content);
-        if (classMatcher.find()) {
-            String className = classMatcher.group(2);
-            // CamelCase: 대문자로 시작해야 함
-            if ("camelCase".equals(style) && !className.matches("^[A-Z][a-zA-Z0-9]*$")) {
-                return new Violation(
-                    Severity.WARNING,
-                    "NAMING_CONVENTION",
-                    String.format("Class name '%s' should follow camelCase convention (start with uppercase)", className),
-                    lineNumber
-                );
-            }
-        }
-        
-        // Method declaration 체크
-        Pattern methodPattern = Pattern.compile("\\b(public|private|protected)\\s+(?:static\\s+)?(?:final\\s+)?[\\w<>\\[\\]]+\\s+([a-z][a-zA-Z0-9]*)\\s*\\(");
-        Matcher methodMatcher = methodPattern.matcher(content);
-        if (methodMatcher.find()) {
-            String methodName = methodMatcher.group(2);
-            // 메서드는 소문자로 시작하는 camelCase 여야 함
-            if (!methodName.matches("^[a-z][a-zA-Z0-9]*$")) {
-                return new Violation(
-                    Severity.WARNING,
-                    "NAMING_CONVENTION",
-                    String.format("Method name '%s' should start with lowercase letter", methodName),
-                    lineNumber
-                );
-            }
-        }
-        
-        // Constant declaration 체크 (final static)
-        Pattern constantPattern = Pattern.compile("\\b(final|static)\\s+(?:final|static)*\\s*[\\w<>\\[\\]]+\\s+([A-Z_][A-Z0-9_]*)\\s*=");
-        Matcher constantMatcher = constantPattern.matcher(content);
-        if (constantMatcher.find()) {
-            // 상수는 대문자 + 언더스코어여야 함 - 정상
-            return null;
-        }
-        
-        // Variable declaration 체크
-        Pattern varPattern = Pattern.compile("\\b(private|protected|public)?\\s*(?:final\\s+)?[\\w<>\\[\\]]+\\s+([a-z][a-zA-Z0-9]*)\\s*=");
-        Matcher varMatcher = varPattern.matcher(content);
-        if (varMatcher.find()) {
-            String varName = varMatcher.group(2);
-            // 변수는 소문자로 시작하는 camelCase
-            if (!varName.matches("^[a-z][a-zA-Z0-9]*$")) {
-                return new Violation(
-                    Severity.INFO,
-                    "NAMING_CONVENTION",
-                    String.format("Variable name '%s' should follow camelCase convention", varName),
-                    lineNumber
-                );
-            }
-        }
-        
-        return null;
     }
 
     /**

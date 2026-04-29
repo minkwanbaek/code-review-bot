@@ -109,6 +109,79 @@ class ReviewRunnerTest {
         assertThat(result).isNotNull();
     }
 
+    @Test
+    @DisplayName("구조화된 import 규칙으로 금지 import 와 import 순서를 감지한다")
+    void review_detectsStructuredImportViolations() {
+        // given
+        Conventions.ImportRule importRule = new Conventions.ImportRule(
+            List.of("java", "javax", "org", "com"),
+            List.of("java.util.*"),
+            "Import convention violation"
+        );
+        conventions.setImportRules(List.of(importRule));
+        StructuredDiff diff = createDiffWithImportViolations();
+
+        // when
+        ReviewResult result = reviewRunner.review(diff, conventions);
+
+        // then
+        List<Violation> allViolations = allViolations(result);
+        assertThat(allViolations).extracting("rule")
+            .contains("FORBIDDEN_IMPORT", "IMPORT_ORDER");
+    }
+
+    @Test
+    @DisplayName("구조화된 layer 규칙으로 controller 의 repository import 를 감지한다")
+    void review_detectsLayerViolations() {
+        // given
+        conventions.setArchRules(List.of(new Conventions.ArchRule(
+            "controller",
+            "repository",
+            false,
+            "ERROR",
+            "Controller must not import repository directly"
+        )));
+        StructuredDiff diff = createDiffWithLayerViolation();
+
+        // when
+        ReviewResult result = reviewRunner.review(diff, conventions);
+
+        // then
+        List<Violation> allViolations = allViolations(result);
+        assertThat(allViolations).extracting("rule")
+            .contains("LAYER_DEPENDENCY");
+        assertThat(allViolations).filteredOn(v -> v.getRule().equals("LAYER_DEPENDENCY"))
+            .extracting("severity")
+            .contains(Severity.ERROR);
+    }
+
+    @Test
+    @DisplayName("구조화된 naming 규칙으로 새 Java 선언 이름을 감지한다")
+    void review_detectsStructuredNamingViolations() {
+        // given
+        conventions.setNamingRules(Map.of(
+            "class", "PascalCase",
+            "method", "camelCase",
+            "variable", "camelCase",
+            "constant", "UPPER_SNAKE_CASE",
+            "package", "lowercase"
+        ));
+        StructuredDiff diff = createDiffWithStructuredNamingViolations();
+
+        // when
+        ReviewResult result = reviewRunner.review(diff, conventions);
+
+        // then
+        List<Violation> allViolations = allViolations(result);
+        assertThat(allViolations).extracting("rule")
+            .contains("PACKAGE_NAMING", "NAMING_CONVENTION");
+        assertThat(allViolations).extracting("message")
+            .anyMatch(message -> message.toString().contains("bad_service"))
+            .anyMatch(message -> message.toString().contains("BadMethod"))
+            .anyMatch(message -> message.toString().contains("BadVariable"))
+            .anyMatch(message -> message.toString().contains("badConstant"));
+    }
+
     /**
      * 기본 컨벤션 생성
      */
@@ -252,6 +325,59 @@ class ReviewRunnerTest {
         diff.addFile(file2);
         
         return diff;
+    }
+
+    private StructuredDiff createDiffWithImportViolations() {
+        StructuredDiff diff = new StructuredDiff();
+        FileDiff fileDiff = new FileDiff(null, "src/main/java/com/example/service/UserService.java");
+
+        Hunk hunk = new Hunk(1, 1, "@@ -1,5 +1,5 @@");
+        hunk.addChange(createChange(ChangeType.ADDITION, 3, "import com.example.domain.User;"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 4, "import java.util.List;"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 5, "public class UserService {"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 6, "}"));
+
+        fileDiff.addHunk(hunk);
+        diff.addFile(fileDiff);
+        return diff;
+    }
+
+    private StructuredDiff createDiffWithLayerViolation() {
+        StructuredDiff diff = new StructuredDiff();
+        FileDiff fileDiff = new FileDiff(null, "src/main/java/com/example/controller/UserController.java");
+
+        Hunk hunk = new Hunk(1, 1, "@@ -1,4 +1,4 @@");
+        hunk.addChange(createChange(ChangeType.ADDITION, 3, "import com.example.repository.UserRepository;"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 4, "public class UserController {"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 5, "}"));
+
+        fileDiff.addHunk(hunk);
+        diff.addFile(fileDiff);
+        return diff;
+    }
+
+    private StructuredDiff createDiffWithStructuredNamingViolations() {
+        StructuredDiff diff = new StructuredDiff();
+        FileDiff fileDiff = new FileDiff(null, "src/main/java/com/Example/bad_service.java");
+
+        Hunk hunk = new Hunk(1, 1, "@@ -1,7 +1,7 @@");
+        hunk.addChange(createChange(ChangeType.ADDITION, 1, "package com.Example;"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 3, "public class bad_service {"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 4, "    private static final String badConstant = \"x\";"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 5, "    public void BadMethod() {"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 6, "        int BadVariable = 1;"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 7, "    }"));
+        hunk.addChange(createChange(ChangeType.ADDITION, 8, "}"));
+
+        fileDiff.addHunk(hunk);
+        diff.addFile(fileDiff);
+        return diff;
+    }
+
+    private List<Violation> allViolations(ReviewResult result) {
+        return result.getFileReviews().stream()
+            .flatMap(f -> f.getViolations().stream())
+            .toList();
     }
 
     /**
