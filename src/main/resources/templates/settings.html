@@ -546,11 +546,11 @@
                     let html = '';
                     data.repos.forEach((repo, index) => {
                         const providerClass = repo.provider === 'github' ? 'provider-github' : 
-                                            repo.provider === 'bitbucket-cloud' ? 'provider-bitbucket' : 'provider-bitbucket-server';
+                                            (repo.provider === 'bitbucket-cloud' || repo.provider === 'bitbucket') ? 'provider-bitbucket' : 'provider-bitbucket-server';
                         const providerName = repo.provider === 'github' ? 'GitHub' : 
-                                           repo.provider === 'bitbucket-cloud' ? 'Bitbucket' : 'Bitbucket Server';
+                                           (repo.provider === 'bitbucket-cloud' || repo.provider === 'bitbucket') ? 'Bitbucket' : 'Bitbucket Server';
                         const repoName = repo.provider === 'github' ? `${repo.owner}/${repo.repo}` :
-                                        repo.provider === 'bitbucket-cloud' ? `${repo.workspace}/${repo.repo}` :
+                                        (repo.provider === 'bitbucket-cloud' || repo.provider === 'bitbucket') ? `${repo.workspace}/${repo.repo}` :
                                         `${repo.host}/${repo.project}/${repo.repo}`;
                         
                         html += `<tr>
@@ -601,12 +601,21 @@
         async function testConnection(provider) {
             const resultDiv = document.getElementById(`${provider === 'github' ? 'github' : provider === 'bitbucket-cloud' ? 'bb-cloud' : 'bbs'}-test-result`);
             resultDiv.innerHTML = '<span class="test-result" style="background:#f1f5f9;color:#64748b;">Testing...</span>';
+            const payload = { provider };
+            if (provider === 'github') {
+                payload.token = document.getElementById('github-token').value;
+            } else if (provider === 'bitbucket-cloud') {
+                payload.username = document.getElementById('bb-username').value;
+                payload.appPassword = document.getElementById('bb-app-password').value;
+            } else if (provider === 'bitbucket-server') {
+                payload.token = document.getElementById('bbs-token').value;
+            }
             
             try {
                 const response = await fetch('/api/settings/test-connection', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider })
+                    body: JSON.stringify(payload)
                 });
                 const data = await response.json();
                 
@@ -679,9 +688,45 @@
             }
         }
 
+        async function loadGeneralSettings() {
+            try {
+                const response = await fetch('/api/settings/general');
+                const data = await response.json();
+                if (!data.success || !data.settings) {
+                    return;
+                }
+
+                const settings = data.settings;
+                if (settings.pollInterval) {
+                    document.getElementById('poll-interval').value = Math.floor(Number(settings.pollInterval) / 1000);
+                }
+                if (settings.language) {
+                    document.getElementById('language').value = settings.language;
+                }
+                if (settings.outputFormat) {
+                    document.getElementById('output-format').value = settings.outputFormat;
+                }
+                if (settings.aiEnabled !== undefined) {
+                    document.getElementById('ai-enabled').value = String(settings.aiEnabled);
+                }
+                if (settings.ollamaBaseUrl) {
+                    document.getElementById('ollama-base-url').value = settings.ollamaBaseUrl;
+                }
+                if (settings.ollamaModel) {
+                    document.getElementById('ollama-model').value = settings.ollamaModel;
+                }
+                if (settings.ollamaTimeoutSeconds) {
+                    document.getElementById('ollama-timeout').value = settings.ollamaTimeoutSeconds;
+                }
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadRepos();
+            loadGeneralSettings();
             toggleProviderFields();
         });
     </script>

@@ -20,6 +20,9 @@ management:
       show-details: when-authorized
 
 reviewbot:
+  dashboard:
+    data-dir: ${REVIEWBOT_DASHBOARD_DATA_DIR:.reviewbot/dashboard}
+
   # Scheduler configuration
   scheduler:
     poll-interval-ms: ${REVIEWBOT_POLL_INTERVAL_MS:300000}  # 5 minutes default

@@ -564,10 +564,10 @@
                                 let linePrefix = ' ';
                                 let lineNum = change.lineNumberNew || change.lineNumberOld || '';
                                 
-                                if (change.type === 'ADDED') {
+                                if (change.type === 'ADDITION' || change.type === 'ADDED') {
                                     lineClass = 'added';
                                     linePrefix = '+';
-                                } else if (change.type === 'REMOVED') {
+                                } else if (change.type === 'DELETION' || change.type === 'REMOVED') {
                                     lineClass = 'removed';
                                     linePrefix = '-';
                                 }

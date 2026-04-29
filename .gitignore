@@ -44,3 +44,5 @@ logs/
 # Environment
 .env
 *.env.local
+
+.codex/

@@ -403,6 +403,7 @@
             <table class="history-table">
                 <thead>
                     <tr>
+                        <th>Event</th>
                         <th>PR #</th>
                         <th>Repository</th>
                         <th>Violations</th>
@@ -413,7 +414,7 @@
                 </thead>
                 <tbody id="history-table-body">
                     <tr>
-                        <td colspan="6" style="text-align:center;color:#64748b;padding:2rem;">Loading history...</td>
+                        <td colspan="7" style="text-align:center;color:#64748b;padding:2rem;">Loading history...</td>
                     </tr>
                 </tbody>
             </table>
@@ -471,7 +472,7 @@
             } catch (error) {
                 console.error('Error loading history:', error);
                 document.getElementById('history-table-body').innerHTML = 
-                    '<tr><td colspan="6" style="text-align:center;color:#dc2626;">Failed to load history</td></tr>';
+                    '<tr><td colspan="7" style="text-align:center;color:#dc2626;">Failed to load history</td></tr>';
             }
         }
 
@@ -480,7 +481,7 @@
             const tbody = document.getElementById('history-table-body');
             
             if (!history || history.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#64748b;">No history found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#64748b;">No history found</td></tr>';
                 return;
             }
             
@@ -489,9 +490,17 @@
                 const statusClass = item.status === 'PASSED' ? 'badge-success' : 
                                    item.errorCount > 0 ? 'badge-error' : 'badge-warning';
                 const statusText = item.status || 'COMPLETED';
+                const eventType = item.eventType || 'REVIEW';
+                const prLabel = eventType === 'COMMIT'
+                    ? `${item.branch || '-'} ${item.commitSha ? String(item.commitSha).substring(0, 7) : ''}`
+                    : `#${item.prNumber || '-'}`;
+                const viewAction = eventType === 'COMMIT' && item.url
+                    ? `<a href="${item.url}" target="_blank" class="btn btn-sm btn-primary">Open</a>`
+                    : `<a href="/pr/${item.prId}" class="btn btn-sm btn-primary">View</a>`;
                 
                 html += `<tr>
-                    <td><strong>#${item.prNumber || '-'}</strong></td>
+                    <td><span class="badge ${eventType === 'COMMIT' ? 'badge-success' : 'badge-warning'}">${eventType}</span></td>
+                    <td><strong>${prLabel}</strong></td>
                     <td>${item.repo || '-'}</td>
                     <td>
                         <span class="badge badge-error">${item.errorCount || 0} errors</span>
@@ -501,7 +510,7 @@
                     <td><span class="badge ${statusClass}">${statusText}</span></td>
                     <td>${formatDate(item.reviewedAt)}</td>
                     <td>
-                        <a href="/pr/${item.prId}" class="btn btn-sm btn-primary">View</a>
+                        ${viewAction}
                         <button class="btn btn-sm btn-primary" onclick="selectTargetForCompare(${item.id})">Compare</button>
                         <button class="btn btn-sm btn-secondary" onclick="downloadReport(${item.id})">Download</button>
                     </td>

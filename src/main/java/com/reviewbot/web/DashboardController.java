@@ -1,5 +1,6 @@
 package com.reviewbot.web;
 
+import com.reviewbot.features.dashboard.service.DashboardDataService;
 import com.reviewbot.features.dashboard.service.ReviewHistoryComparisonService;
 
 /**
@@ -11,9 +12,11 @@ public class DashboardController extends com.reviewbot.features.dashboard.contro
     /**
      * Creates the backward-compatible dashboard controller alias.
      *
+     * @param dashboardDataService dashboard state persistence service
      * @param comparisonService service used to compare review history entries
      */
-    public DashboardController(ReviewHistoryComparisonService comparisonService) {
-        super(comparisonService);
+    public DashboardController(DashboardDataService dashboardDataService,
+                               ReviewHistoryComparisonService comparisonService) {
+        super(dashboardDataService, comparisonService);
     }
 }
