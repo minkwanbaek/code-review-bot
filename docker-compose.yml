@@ -14,11 +14,15 @@ services:
     volumes:
       # Mount review reports directory
       - ./reports:/app/reports
+      # Persist dashboard / history data
+      - ./.reviewbot:/app/.reviewbot
       # Mount configuration (optional)
       - ./config:/app/config:ro
     environment:
       # GitHub integration
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_OWNER=${GITHUB_OWNER:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
       
       # Bitbucket integration
       - BITBUCKET_USERNAME=${BITBUCKET_USERNAME:-}
