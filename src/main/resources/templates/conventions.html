@@ -140,8 +140,41 @@
 
         .actions {
             display: flex;
+            flex-wrap: wrap;
             gap: 0.75rem;
             margin-top: 1rem;
+        }
+
+        .status-indicator {
+            align-items: center;
+            color: var(--muted-color);
+            display: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            gap: 0.5rem;
+        }
+
+        .status-indicator.active {
+            display: inline-flex;
+        }
+
+        .status-dot {
+            animation: pulse 1s infinite ease-in-out;
+            background: var(--primary-color);
+            border-radius: 999px;
+            height: 0.65rem;
+            width: 0.65rem;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.35;
+                transform: scale(0.85);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
 
         .alert {
@@ -179,6 +212,43 @@
             gap: 0.75rem;
             justify-content: space-between;
             margin-bottom: 0.5rem;
+        }
+
+        .rule-actions {
+            display: flex;
+            flex-shrink: 0;
+            gap: 0.5rem;
+        }
+
+        .rule-summary {
+            cursor: pointer;
+            font-weight: 700;
+            list-style: none;
+        }
+
+        .rule-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .rule-summary::before {
+            content: "▸";
+            display: inline-block;
+            margin-right: 0.45rem;
+            transition: transform 0.15s ease;
+        }
+
+        details[open] > .rule-summary::before {
+            transform: rotate(90deg);
+        }
+
+        .category {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.85rem;
+        }
+
+        .category + .category {
+            margin-top: 0.75rem;
         }
 
         .badge {
@@ -236,6 +306,11 @@
                     <textarea id="convention-text" placeholder="Example: Do not use System.out.println. Use 4 spaces. Classes use PascalCase and methods use camelCase."></textarea>
                     <div class="actions">
                         <button type="submit" class="btn btn-primary">Learn Rules</button>
+                        <button type="button" class="btn btn-muted" onclick="learnConventionsWithAi()">AI Learn</button>
+                        <span id="ai-status" class="status-indicator" aria-live="polite">
+                            <span class="status-dot"></span>
+                            AI processing
+                        </span>
                     </div>
                 </form>
             </section>
@@ -259,20 +334,7 @@
         <aside>
             <section class="section">
                 <h2 class="section-title">Parsed Rules</h2>
-                <div class="rule-list">
-                    <div class="rule-item">
-                        <div class="rule-head"><strong>Import Order</strong></div>
-                        <div id="import-order" class="muted"></div>
-                    </div>
-                    <div class="rule-item">
-                        <div class="rule-head"><strong>Naming Patterns</strong></div>
-                        <pre id="naming-patterns">{}</pre>
-                    </div>
-                    <div class="rule-item">
-                        <div class="rule-head"><strong>Formatting Rules</strong></div>
-                        <pre id="formatting-rules">{}</pre>
-                    </div>
-                </div>
+                <div id="categorized-rules"></div>
             </section>
         </aside>
     </div>
@@ -280,6 +342,12 @@
 
 <script>
     let conventions = {};
+    const categoryConfig = {
+        importRules: 'Import Rules',
+        namingRules: 'Naming Rules',
+        architectureRules: 'Architecture Rules',
+        forbiddenPatterns: 'Forbidden Patterns'
+    };
 
     function showAlert(message, type) {
         const container = document.getElementById('alert-container');
@@ -299,13 +367,11 @@
     }
 
     function renderConventions() {
-        document.getElementById('import-order').textContent =
-            (conventions.importOrder || []).join(' -> ') || 'No import order rules';
-        document.getElementById('naming-patterns').textContent =
-            JSON.stringify(conventions.namingPatterns || {}, null, 2);
-        document.getElementById('formatting-rules').textContent =
-            JSON.stringify(conventions.formattingRules || {}, null, 2);
+        renderCategorizedRules();
+        renderForbiddenPatternEditor();
+    }
 
+    function renderForbiddenPatternEditor() {
         const list = document.getElementById('forbidden-patterns');
         const patterns = conventions.forbiddenPatterns || [];
         if (patterns.length === 0) {
@@ -319,10 +385,10 @@
                     <strong>${escapeHtml(pattern.pattern || '')}</strong>
                     <span class="badge">${escapeHtml(pattern.severity || 'WARNING')}</span>
                 </div>
-                <p class="muted">${escapeHtml(pattern.description || '')}</p>
+                <p class="muted">${escapeHtml(ruleMessage(pattern))}</p>
                 <div class="actions">
-                    <button class="btn btn-sm btn-muted" onclick="editPattern(${index})">Edit</button>
-                    <button class="btn btn-sm btn-danger" onclick="deletePattern(${index})">Delete</button>
+                    <button class="btn btn-sm btn-muted" onclick="editRule('forbiddenPatterns', ${index})">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteRule('forbiddenPatterns', ${index})">Delete</button>
                 </div>
             </div>
         `).join('');
@@ -330,17 +396,27 @@
 
     async function learnConventions(event) {
         event.preventDefault();
+        await learnFromEndpoint('/api/conventions/learn', 'Conventions learned and saved.');
+    }
+
+    async function learnConventionsWithAi() {
+        await learnFromEndpoint('/api/conventions/learn/ai', 'AI learned conventions and saved them.');
+    }
+
+    async function learnFromEndpoint(url, successMessage) {
         const text = document.getElementById('convention-text').value;
-        const response = await fetch('/api/conventions/learn', {
+        setAiStatus(url.endsWith('/ai'));
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, aiEnabled: url.endsWith('/ai') })
         });
         const data = await response.json();
+        setAiStatus(false);
         if (data.success) {
             conventions = data.data?.conventions || data.conventions;
             renderConventions();
-            showAlert('Conventions learned and saved.', 'success');
+            showAlert(successMessage, 'success');
         } else {
             showAlert(data.message || 'Failed to learn conventions', 'error');
         }
@@ -358,27 +434,11 @@
     }
 
     async function editPattern(index) {
-        const current = conventions.forbiddenPatterns[index];
-        const pattern = prompt('Pattern', current.pattern || '');
-        if (pattern === null) return;
-        const description = prompt('Description', current.description || '');
-        if (description === null) return;
-        const severity = prompt('Severity: ERROR, WARNING, INFO', current.severity || 'WARNING');
-        if (severity === null) return;
-        await savePattern(`/api/conventions/forbidden-patterns/${index}`, 'PUT', { pattern, description, severity });
+        await editRule('forbiddenPatterns', index);
     }
 
     async function deletePattern(index) {
-        if (!confirm('Delete this pattern?')) return;
-        const response = await fetch(`/api/conventions/forbidden-patterns/${index}`, { method: 'DELETE' });
-        const data = await response.json();
-        if (data.success) {
-            conventions = data.data?.conventions || data.conventions;
-            renderConventions();
-            showAlert('Pattern deleted.', 'success');
-        } else {
-            showAlert(data.message || 'Failed to delete pattern', 'error');
-        }
+        await deleteRule('forbiddenPatterns', index);
     }
 
     async function savePattern(url, method, pattern) {
@@ -395,6 +455,206 @@
         } else {
             showAlert(data.message || 'Failed to save pattern', 'error');
         }
+    }
+
+    async function saveAllConventions(successMessage) {
+        normalizeConventions();
+        const response = await fetch('/api/conventions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(conventions)
+        });
+        const data = await response.json();
+        if (data.success) {
+            conventions = data.data?.conventions || data.conventions;
+            renderConventions();
+            showAlert(successMessage, 'success');
+        } else {
+            showAlert(data.message || 'Failed to save conventions', 'error');
+        }
+    }
+
+    function renderCategorizedRules() {
+        const grouped = buildRuleGroups();
+        document.getElementById('categorized-rules').innerHTML = Object.entries(categoryConfig).map(([category, title]) => {
+            const rules = grouped[category] || [];
+            return `
+                <details class="category" open>
+                    <summary class="rule-summary">${title} <span class="badge">${rules.length}</span></summary>
+                    <div class="rule-list">
+                        ${rules.length === 0 ? `<p class="muted">No ${title.toLowerCase()} configured.</p>` : rules.map(ruleCard).join('')}
+                    </div>
+                </details>
+            `;
+        }).join('');
+    }
+
+    function ruleCard(rule) {
+        return `
+            <div class="rule-item">
+                <div class="rule-head">
+                    <strong>${escapeHtml(rule.title)}</strong>
+                    <div class="rule-actions">
+                        ${rule.badge ? `<span class="badge">${escapeHtml(rule.badge)}</span>` : ''}
+                        <button class="btn btn-sm btn-muted" onclick="editRule('${rule.kind}', ${rule.index})">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRule('${rule.kind}', ${rule.index})">Delete</button>
+                    </div>
+                </div>
+                <p class="muted">${escapeHtml(rule.description)}</p>
+            </div>
+        `;
+    }
+
+    function buildRuleGroups() {
+        const importRules = (conventions.importRules || []).map((rule, index) => ({
+            kind: 'importRules',
+            index,
+            title: `Import rule ${index + 1}`,
+            badge: (rule.order || []).join(' -> ') || 'ORDER',
+            description: [
+                rule.message || '',
+                (rule.forbiddenImports || []).length ? `Forbidden: ${(rule.forbiddenImports || []).join(', ')}` : ''
+            ].filter(Boolean).join(' | ') || 'No import rule message'
+        }));
+        if (importRules.length === 0 && (conventions.importOrder || []).length > 0) {
+            importRules.push({
+                kind: 'importOrder',
+                index: 0,
+                title: 'Import order',
+                badge: 'ORDER',
+                description: (conventions.importOrder || []).join(' -> ')
+            });
+        }
+
+        const namingSource = conventions.namingRules && Object.keys(conventions.namingRules).length
+            ? conventions.namingRules
+            : (conventions.namingPatterns || {});
+        const namingRules = Object.entries(namingSource).map(([name, value], index) => ({
+            kind: 'namingRules',
+            index,
+            title: name,
+            badge: String(value),
+            description: `${name} must use ${value}`
+        }));
+
+        const archRules = (conventions.archRules || []).map((rule, index) => ({
+            kind: 'archRules',
+            index,
+            title: `${rule.fromLayer || 'source'} -> ${rule.toLayer || 'target'}`,
+            badge: rule.allowed ? 'ALLOWED' : (rule.severity || 'ERROR'),
+            description: rule.message || `Dependency is ${rule.allowed ? 'allowed' : 'forbidden'}`
+        }));
+        const dependencyRules = (conventions.dependencyRules || []).map((rule, index) => ({
+            kind: 'dependencyRules',
+            index,
+            title: `${rule.layer || 'layer'} dependencies`,
+            badge: rule.severity || 'ERROR',
+            description: [
+                rule.message || '',
+                (rule.forbiddenDependencies || []).length ? `Forbidden: ${(rule.forbiddenDependencies || []).join(', ')}` : ''
+            ].filter(Boolean).join(' | ') || 'No dependency rule message'
+        }));
+
+        const forbiddenPatterns = (conventions.forbiddenPatterns || []).map((pattern, index) => ({
+            kind: 'forbiddenPatterns',
+            index,
+            title: pattern.pattern || `Forbidden pattern ${index + 1}`,
+            badge: pattern.severity || 'WARNING',
+            description: ruleMessage(pattern)
+        }));
+
+        return {
+            importRules,
+            namingRules,
+            architectureRules: archRules.concat(dependencyRules),
+            forbiddenPatterns
+        };
+    }
+
+    async function editRule(kind, index) {
+        normalizeConventions();
+        if (kind === 'namingRules') {
+            await editNamingRule(index);
+            return;
+        }
+        if (kind === 'importOrder') {
+            await editImportOrder();
+            return;
+        }
+
+        const collection = conventions[kind] || [];
+        const current = collection[index];
+        const next = prompt('Edit rule JSON', JSON.stringify(current, null, 2));
+        if (next === null) return;
+        try {
+            collection[index] = JSON.parse(next);
+            conventions[kind] = collection;
+            await saveAllConventions('Rule updated.');
+        } catch (error) {
+            showAlert('Rule JSON is invalid.', 'error');
+        }
+    }
+
+    async function editNamingRule(index) {
+        const keys = Object.keys(conventions.namingRules || {});
+        const key = keys[index];
+        const nextKey = prompt('Name', key || '');
+        if (nextKey === null || nextKey.trim() === '') return;
+        const nextValue = prompt('Pattern', conventions.namingRules[key] || '');
+        if (nextValue === null) return;
+        delete conventions.namingRules[key];
+        conventions.namingRules[nextKey.trim()] = nextValue.trim();
+        conventions.namingPatterns = { ...conventions.namingRules };
+        await saveAllConventions('Rule updated.');
+    }
+
+    async function editImportOrder() {
+        const next = prompt('Import order, comma separated', (conventions.importOrder || []).join(', '));
+        if (next === null) return;
+        conventions.importOrder = splitCsv(next);
+        await saveAllConventions('Rule updated.');
+    }
+
+    async function deleteRule(kind, index) {
+        if (!confirm('Delete this rule?')) return;
+        normalizeConventions();
+        if (kind === 'namingRules') {
+            const keys = Object.keys(conventions.namingRules || {});
+            delete conventions.namingRules[keys[index]];
+            conventions.namingPatterns = { ...conventions.namingRules };
+        } else if (kind === 'importOrder') {
+            conventions.importOrder = [];
+        } else {
+            conventions[kind] = (conventions[kind] || []).filter((_, currentIndex) => currentIndex !== index);
+        }
+        await saveAllConventions('Rule deleted.');
+    }
+
+    function normalizeConventions() {
+        conventions.importOrder = conventions.importOrder || [];
+        conventions.importRules = conventions.importRules || [];
+        conventions.namingRules = conventions.namingRules || {};
+        if (Object.keys(conventions.namingRules).length === 0 && conventions.namingPatterns) {
+            conventions.namingRules = { ...conventions.namingPatterns };
+        }
+        conventions.namingPatterns = conventions.namingPatterns || {};
+        conventions.formattingRules = conventions.formattingRules || {};
+        conventions.commonPatterns = conventions.commonPatterns || [];
+        conventions.archRules = conventions.archRules || [];
+        conventions.dependencyRules = conventions.dependencyRules || [];
+        conventions.forbiddenPatterns = conventions.forbiddenPatterns || [];
+    }
+
+    function ruleMessage(rule) {
+        return rule.description || rule.message || '';
+    }
+
+    function splitCsv(value) {
+        return value.split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function setAiStatus(active) {
+        document.getElementById('ai-status').classList.toggle('active', active);
     }
 
     function escapeHtml(value) {
